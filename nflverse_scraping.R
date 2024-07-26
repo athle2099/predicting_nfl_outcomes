@@ -4,7 +4,7 @@ rm(list = ls())
 
 # set directory for file imports
 
-direc <- "/Users/totam/Downloads/"
+direc <- "../data/"
 
 # libraries used
 
