@@ -1,0 +1,1235 @@
+---
+title: "Predicting NFL Position Grades (public version)"
+date: "`r format(Sys.time(), '%B %d, %Y')`"
+output:
+  html_document:
+    df_print: paged
+  html_notebook: default
+  pdf_document: default
+  word_document: default
+---
+
+**NOTE: This code will not properly compile, as the necessary PFF grades have been taken out (since PFF grading data is proprietary and requires a subscription).**
+
+```{r}
+# clear environment
+
+rm(list = ls())
+
+# set directory for file imports
+
+direc <- "../data/"
+```
+
+```{r message = FALSE}
+# libraries used
+
+library(tidyverse)
+library(nflverse)
+library(data.table)
+library(RecordLinkage)
+```
+
+```{r}
+# year to be predicted; for example, if year = 2018, we use PFF grades from 2016 and 2017 to predict grades for 2018
+# year >= 2015, since PFF grades are only complete starting from 2013
+
+year <- 2015
+
+# obtain PFF grades from the previous year
+# remove duplicates (for players who are listed as multiple positions)
+
+data_prev_year <- read.csv(paste0(direc, "Modified PFF Rankings - MergedRankings.csv"))
+data_prev_year <- data_prev_year[data_prev_year$year == year - 1,]
+data_prev_year <- data_prev_year[!(duplicated(data_prev_year$player_id) & duplicated(data_prev_year$year)),]
+
+# separate players who played at least 11 games ("fully healthy" throughout the season)
+
+injured_data <- data_prev_year[data_prev_year$player_game_count < 11,]
+non_injured_data <- data_prev_year[data_prev_year$player_game_count >= 11,]
+
+# obtain PFF grades from two years before (the previous previous year)
+# remove duplicates (for players who are listed as multiple positions)
+
+data_prev_prev_year <- read.csv(paste0(direc, "PFFMergedRankings.csv"))
+data_prev_prev_year <- data_prev_prev_year[data_prev_prev_year$year == year - 2,]
+data_prev_prev_year <- data_prev_prev_year[!(duplicated(data_prev_prev_year$player_id) & duplicated(data_prev_prev_year$year)),]
+```
+
+```{r}
+# assign grades to players who did not play more than 11 games the previous season (they were not "fully healthy")
+
+actual_grade <- 0
+for(it in injured_data$player_id) {
+  prev_grade <- max(0, injured_data[injured_data$player_id == it,]$grade)
+  prev_prev_grade <- max(0, data_prev_prev_year[data_prev_prev_year$player_id == it,]$grade)
+  
+  # if the player also played less than 11 games two seasons before, their grade for the upcoming season is determined by the previous year
+  
+  if(max(0, data_prev_prev_year[data_prev_prev_year$player_id == it,]$player_game_count) < 11 & prev_grade != 0) {
+    actual_grade <- prev_grade
+  }
+  else {
+    # if the player had no grade two seasons before, their grade for the upcoming season is determined by the previous year
+    
+    if(prev_prev_grade == 0) {
+      prev_prev_grade <- prev_grade
+    }
+    
+    # if the PFF grade change from two seasons before compared to the previous season is significant (>= 10), we use the grade from two seasons before
+    # we reason such a drop would most likely indicate the player was injured the previous season (for example, Aaron Rodgers in the 2023 NFL season)
+    
+    if(prev_prev_grade-prev_grade >= 10) {
+      actual_grade <- prev_prev_grade
+    }
+    else {
+      actual_grade <- prev_grade
+    } 
+  }
+  injured_data[injured_data$player_id == it,]$grade <- actual_grade
+}
+```
+
+```{r}
+# identify players who played in the NFL two years before but did not play the previous season (either due to injury or contract situations)
+
+unincluded <- data.frame(c("test"), c(-10), c("test"), c("test"), c(-10), c(-10), c(-10), c(-10))
+colnames(unincluded) <- c("player", "player_id", "position", "team_name", "player_game_count", "grade", "franchise_id", "year")
+for(it in data_prev_prev_year$player_id) {
+  if(is.na(data_prev_year[data_prev_year$player_id == it,][1,1])) {
+    unincluded <- unincluded %>%
+      add_row(player = data_prev_prev_year[data_prev_prev_year$player_id == it,][1,1],
+      player_id = data_prev_prev_year[data_prev_prev_year$player_id == it,][1,2],
+      position = data_prev_prev_year[data_prev_prev_year$player_id == it,][1,3],
+      team_name = data_prev_prev_year[data_prev_prev_year$player_id == it,][1,4],
+      player_game_count = data_prev_prev_year[data_prev_prev_year$player_id == it,][1,5],
+      grade = data_prev_prev_year[data_prev_prev_year$player_id == it,][1,6],
+      franchise_id = data_prev_prev_year[data_prev_prev_year$player_id == it,][1,7],
+      year = data_prev_prev_year[data_prev_prev_year$player_id == it,][1,8])
+  }
+}
+
+unincluded <- unincluded[unincluded$year != -10,]
+
+# merge data frames together to obtain entire list of potential players on NFL rosters for the season
+
+list <- list(injured_data, non_injured_data, unincluded)
+corrected_data_prev_year <- list %>% reduce(full_join, by = c("player", "player_id", "position", "team_name", "player_game_count", "grade", "franchise_id", "year"))
+corrected_data_prev_year <- corrected_data_prev_year[order(corrected_data_prev_year$team_name, corrected_data_prev_year$position, 
+                                                           -corrected_data_prev_year$grade, -corrected_data_prev_year$player_game_count),]
+```
+
+```{r}
+# string modifications
+# remove designations after the players' last name to remove inconsistent player cases between PFF and nflverse data
+
+for(it in corrected_data_prev_year$player_id) {
+  s <- corrected_data_prev_year[corrected_data_prev_year$player_id == it,][1,1]
+  corrected_data_prev_year["player"][corrected_data_prev_year["player_id"] == it] <- unlist(strsplit(s, split = ' Sr.', fixed = TRUE))[1]
+  s <- corrected_data_prev_year[corrected_data_prev_year$player_id == it,][1,1]
+  corrected_data_prev_year["player"][corrected_data_prev_year["player_id"] == it] <- unlist(strsplit(s, split = ' Sr', fixed = TRUE))[1]
+  s <- corrected_data_prev_year[corrected_data_prev_year$player_id == it,][1,1]
+  corrected_data_prev_year["player"][corrected_data_prev_year["player_id"] == it] <- unlist(strsplit(s, split = ' Jr.', fixed = TRUE))[1]
+  s <- corrected_data_prev_year[corrected_data_prev_year$player_id == it,][1,1]
+  corrected_data_prev_year["player"][corrected_data_prev_year["player_id"] == it] <- unlist(strsplit(s, split = ' Jr', fixed = TRUE))[1]
+  s <- corrected_data_prev_year[corrected_data_prev_year$player_id == it,][1,1]
+  corrected_data_prev_year["player"][corrected_data_prev_year["player_id"] == it] <- unlist(strsplit(s, split = ' II', fixed = TRUE))[1]
+  s <- corrected_data_prev_year[corrected_data_prev_year$player_id == it,][1,1]
+  corrected_data_prev_year["player"][corrected_data_prev_year["player_id"] == it] <- unlist(strsplit(s, split = ' III', fixed = TRUE))[1]
+  s <- corrected_data_prev_year[corrected_data_prev_year$player_id == it,][1,1]
+  corrected_data_prev_year["player"][corrected_data_prev_year["player_id"] == it] <- unlist(strsplit(s, split = ' IV', fixed = TRUE))[1]
+}
+```
+
+```{r}
+# use nflverse (nflfastR, nflreadR) to load weekly roster data
+
+data_players <- load_rosters_weekly(year)
+
+# assign numerical team IDs to NFL teams
+
+data_players["team_number"] <- 0
+
+data_players["team_number"][data_players["team"] == "ARI" | data_players["team"] == "ARZ"] <- 1
+data_players["team_number"][data_players["team"] == "ATL"] <- 2
+data_players["team_number"][data_players["team"] == "BAL" | data_players["team"] == "BLT"] <- 3
+data_players["team_number"][data_players["team"] == "BUF"] <- 4
+data_players["team_number"][data_players["team"] == "CAR"] <- 5
+data_players["team_number"][data_players["team"] == "CHI"] <- 6
+data_players["team_number"][data_players["team"] == "CIN"] <- 7
+data_players["team_number"][data_players["team"] == "CLE" | data_players["team"] == "CLV"] <- 8
+data_players["team_number"][data_players["team"] == "DAL"] <- 9
+data_players["team_number"][data_players["team"] == "DEN"] <- 10
+data_players["team_number"][data_players["team"] == "DET"] <- 11
+data_players["team_number"][data_players["team"] == "GB"] <- 12
+data_players["team_number"][data_players["team"] == "HOU" | data_players["team"] == "HST"] <- 13
+data_players["team_number"][data_players["team"] == "IND"] <- 14
+data_players["team_number"][data_players["team"] == "JAX"] <- 15
+data_players["team_number"][data_players["team"] == "KC"] <- 16
+data_players["team_number"][data_players["team"] == "MIA"] <- 17
+data_players["team_number"][data_players["team"] == "MIN"] <- 18
+data_players["team_number"][data_players["team"] == "NE"] <- 19
+data_players["team_number"][data_players["team"] == "NO"] <- 20
+data_players["team_number"][data_players["team"] == "NYG"] <- 21
+data_players["team_number"][data_players["team"] == "NYJ"] <- 22
+data_players["team_number"][data_players["team"] == "LV" | data_players["team"] == "OAK"] <- 23
+data_players["team_number"][data_players["team"] == "PHI"] <- 24
+data_players["team_number"][data_players["team"] == "PIT"] <- 25
+data_players["team_number"][data_players["team"] == "LA" | data_players["team"] == "SL"] <- 26
+data_players["team_number"][data_players["team"] == "LAC" | data_players["team"] == "SD"] <- 27
+data_players["team_number"][data_players["team"] == "SF"] <- 28
+data_players["team_number"][data_players["team"] == "SEA"] <- 29
+data_players["team_number"][data_players["team"] == "TB"] <- 30
+data_players["team_number"][data_players["team"] == "TEN"] <- 31
+data_players["team_number"][data_players["team"] == "WAS"] <- 32
+```
+
+```{r}
+# classify players in general positional groups
+# remove players listed as fullbacks (FB), long snappers (LS), punt returner (PR) and NA
+# classify tackle (T), center (C), and guard (G) as offensive line (OL)
+# classify defensive end (DE), defensive tackle (DT), and nose tackle (NT) as defensive line (DL)
+# classify free safety (FS), strong safety (SS), safety (S), and cornerback (CB) as defensive back (DB)
+# classify tight end (TE) as wide receiver (WR)
+# classify outside linebacker (OLB), inside linebacker (ILB), and middle linebacker (MLB) as linebacker (LB)
+
+data_players <- data_players[data_players$position != "FB" & data_players$position != "LS" & data_players$position != "PR" & !is.na(data_players$position),]
+data_players["position"][data_players["position"] == "T" | data_players["position"] == "C" | data_players["position"] == "G"] <- "OL"
+data_players["position"][data_players["position"] == "DE" | data_players["position"] == "DT" | data_players["position"] == "NT"] <- "DL"
+data_players["position"][data_players["position"] == "FS" | data_players["position"] == "SS" | data_players["position"] == "CB" | data_players["position"] == "S"] <- "DB"
+data_players["position"][data_players["position"] == "TE"] <- "WR"
+data_players["position"][data_players["position"] == "OLB" | data_players["position"] == "ILB" | data_players["position"] == "MLB"] <- "LB"
+
+data_players <- data_players[order(data_players$team_number, data_players$status, data_players$week),]
+```
+
+```{r}
+# obtain NFL rookies for upcoming year
+# remove duplicates and NA values
+
+rookies <- data_players[!duplicated(data_players$gsis_id) & data_players$years_exp == 0,]
+rookies <- rookies[!duplicated(rookies$gsis_id) & rookies$status == "ACT",]
+rookies <- data.frame(rookies[, c(1, 2, 3, 6, 7, 8, 9, 14, 19, 23, 26, 27, 34, 36, 37)])
+rookies <- rookies[!is.na(rookies$season),]
+
+# take only active players for the upcoming season
+# remove rookies from the dataset (for rookies to be treated separately)
+
+data_players <- data_players[!duplicated(data_players$gsis_id) & data_players$years_exp != 0,]
+data_players <- data_players[data_players$rookie_year != year,]
+data_players <- data_players[data_players$status == "ACT",]
+data_players <- data.frame(data_players[, c(1, 2, 3, 6, 7, 8, 9, 14, 19, 23, 26, 27, 34, 37)])
+data_players <- data_players[!is.na(data_players$season),]
+
+head(data_players)
+```
+
+```{r}
+# recall the NFL draft has 7 rounds
+# assign draft picks to rookies
+
+rookies["round"] <- 8
+rookies["grade"] <- -10
+rookies["draft_number"] <- as.numeric(rookies$draft_number)
+
+# assign draft rounds to rookies depending on pick number
+# we will use the draft rounds and position to project the expected PFF grade of a rookie
+
+if(year == 2015) {
+  rookies["round"][rookies["draft_number"] <= 32 & !is.na(rookies["draft_number"])] <- 1
+  rookies["round"][rookies["draft_number"] <= 64 & rookies["draft_number"] > 32 & 
+                     !is.na(rookies["draft_number"])] <- 2
+  rookies["round"][rookies["draft_number"] <= 99 & rookies["draft_number"] > 64 & 
+                     !is.na(rookies["draft_number"])] <- 3
+  rookies["round"][rookies["draft_number"] <= 136 & rookies["draft_number"] > 99 & 
+                     !is.na(rookies["draft_number"])] <- 4
+  rookies["round"][rookies["draft_number"] <= 176 & rookies["draft_number"] > 136 & 
+                     !is.na(rookies["draft_number"])] <- 5
+  rookies["round"][rookies["draft_number"] <= 217 & rookies["draft_number"] > 176 & 
+                     !is.na(rookies["draft_number"])] <- 6
+  rookies["round"][rookies["draft_number"] <= 256 & rookies["draft_number"] > 217 & 
+                     !is.na(rookies["draft_number"])] <- 7
+}
+if(year == 2016) {
+  rookies["round"][rookies["draft_number"] <= 31 & !is.na(rookies["draft_number"])] <- 1
+  rookies["round"][rookies["draft_number"] <= 63 & rookies["draft_number"] > 31 & 
+                     !is.na(rookies["draft_number"])] <- 2
+  rookies["round"][rookies["draft_number"] <= 98 & rookies["draft_number"] > 63 & 
+                     !is.na(rookies["draft_number"])] <- 3
+  rookies["round"][rookies["draft_number"] <= 139 & rookies["draft_number"] > 98 & 
+                     !is.na(rookies["draft_number"])] <- 4
+  rookies["round"][rookies["draft_number"] <= 175 & rookies["draft_number"] > 139 & 
+                     !is.na(rookies["draft_number"])] <- 5
+  rookies["round"][rookies["draft_number"] <= 221 & rookies["draft_number"] > 175 & 
+                     !is.na(rookies["draft_number"])] <- 6
+  rookies["round"][rookies["draft_number"] <= 253 & rookies["draft_number"] > 221 & 
+                     !is.na(rookies["draft_number"])] <- 7
+}
+if(year == 2017) {
+  rookies["round"][rookies["draft_number"] <= 32 & !is.na(rookies["draft_number"])] <- 1
+  rookies["round"][rookies["draft_number"] <= 64 & rookies["draft_number"] > 32 & 
+                     !is.na(rookies["draft_number"])] <- 2
+  rookies["round"][rookies["draft_number"] <= 107 & rookies["draft_number"] > 64 & 
+                     !is.na(rookies["draft_number"])] <- 3
+  rookies["round"][rookies["draft_number"] <= 144 & rookies["draft_number"] > 107 & 
+                     !is.na(rookies["draft_number"])] <- 4
+  rookies["round"][rookies["draft_number"] <= 184 & rookies["draft_number"] > 144 & 
+                     !is.na(rookies["draft_number"])] <- 5
+  rookies["round"][rookies["draft_number"] <= 218 & rookies["draft_number"] > 184 & 
+                     !is.na(rookies["draft_number"])] <- 6
+  rookies["round"][rookies["draft_number"] <= 253 & rookies["draft_number"] > 218 & 
+                     !is.na(rookies["draft_number"])] <- 7
+}
+if(year == 2018) {
+  rookies["round"][rookies["draft_number"] <= 32 & !is.na(rookies["draft_number"])] <- 1
+  rookies["round"][rookies["draft_number"] <= 64 & rookies["draft_number"] > 32 & 
+                     !is.na(rookies["draft_number"])] <- 2
+  rookies["round"][rookies["draft_number"] <= 100 & rookies["draft_number"] > 64 & 
+                     !is.na(rookies["draft_number"])] <- 3
+  rookies["round"][rookies["draft_number"] <= 137 & rookies["draft_number"] > 100 & 
+                     !is.na(rookies["draft_number"])] <- 4
+  rookies["round"][rookies["draft_number"] <= 174 & rookies["draft_number"] > 137 & 
+                     !is.na(rookies["draft_number"])] <- 5
+  rookies["round"][rookies["draft_number"] <= 218 & rookies["draft_number"] > 174 & 
+                     !is.na(rookies["draft_number"])] <- 6
+  rookies["round"][rookies["draft_number"] <= 256 & rookies["draft_number"] > 219 & 
+                     !is.na(rookies["draft_number"])] <- 7
+}
+if(year == 2019) {
+  rookies["round"][rookies["draft_number"] <= 32 & !is.na(rookies["draft_number"])] <- 1
+  rookies["round"][rookies["draft_number"] <= 64 & rookies["draft_number"] > 32 & 
+                     !is.na(rookies["draft_number"])] <- 2
+  rookies["round"][rookies["draft_number"] <= 102 & rookies["draft_number"] > 64 & 
+                     !is.na(rookies["draft_number"])] <- 3
+  rookies["round"][rookies["draft_number"] <= 138 & rookies["draft_number"] > 102 & 
+                     !is.na(rookies["draft_number"])] <- 4
+  rookies["round"][rookies["draft_number"] <= 173 & rookies["draft_number"] > 138 & 
+                     !is.na(rookies["draft_number"])] <- 5
+  rookies["round"][rookies["draft_number"] <= 214 & rookies["draft_number"] > 173 & 
+                     !is.na(rookies["draft_number"])] <- 6
+  rookies["round"][rookies["draft_number"] <= 254 & rookies["draft_number"] > 214 & 
+                     !is.na(rookies["draft_number"])] <- 7
+}
+if(year == 2020) {
+  rookies["round"][rookies["draft_number"] <= 32 & !is.na(rookies["draft_number"])] <- 1
+  rookies["round"][rookies["draft_number"] <= 64 & rookies["draft_number"] > 32 & 
+                     !is.na(rookies["draft_number"])] <- 2
+  rookies["round"][rookies["draft_number"] <= 106 & rookies["draft_number"] > 64 & 
+                     !is.na(rookies["draft_number"])] <- 3
+  rookies["round"][rookies["draft_number"] <= 146 & rookies["draft_number"] > 106 & 
+                     !is.na(rookies["draft_number"])] <- 4
+  rookies["round"][rookies["draft_number"] <= 179 & rookies["draft_number"] > 146 & 
+                     !is.na(rookies["draft_number"])] <- 5
+  rookies["round"][rookies["draft_number"] <= 214 & rookies["draft_number"] > 179 & 
+                     !is.na(rookies["draft_number"])] <- 6
+  rookies["round"][rookies["draft_number"] <= 255 & rookies["draft_number"] > 214 & 
+                     !is.na(rookies["draft_number"])] <- 7
+}
+if(year == 2021) {
+  rookies["round"][rookies["draft_number"] <= 32 & !is.na(rookies["draft_number"])] <- 1
+  rookies["round"][rookies["draft_number"] <= 64 & rookies["draft_number"] > 32 & 
+                     !is.na(rookies["draft_number"])] <- 2
+  rookies["round"][rookies["draft_number"] <= 105 & rookies["draft_number"] > 64 & 
+                     !is.na(rookies["draft_number"])] <- 3
+  rookies["round"][rookies["draft_number"] <= 144 & rookies["draft_number"] > 105 & 
+                     !is.na(rookies["draft_number"])] <- 4
+  rookies["round"][rookies["draft_number"] <= 184 & rookies["draft_number"] > 144 & 
+                     !is.na(rookies["draft_number"])] <- 5
+  rookies["round"][rookies["draft_number"] <= 228 & rookies["draft_number"] > 184 & 
+                     !is.na(rookies["draft_number"])] <- 6
+  rookies["round"][rookies["draft_number"] <= 259 & rookies["draft_number"] > 228 & 
+                     !is.na(rookies["draft_number"])] <- 7
+}
+if(year == 2022) {
+  rookies["round"][rookies["draft_number"] <= 32 & !is.na(rookies["draft_number"])] <- 1
+  rookies["round"][rookies["draft_number"] <= 64 & rookies["draft_number"] > 32 & 
+                     !is.na(rookies["draft_number"])] <- 2
+  rookies["round"][rookies["draft_number"] <= 105 & rookies["draft_number"] > 64 & 
+                     !is.na(rookies["draft_number"])] <- 3
+  rookies["round"][rookies["draft_number"] <= 143 & rookies["draft_number"] > 105 & 
+                     !is.na(rookies["draft_number"])] <- 4
+  rookies["round"][rookies["draft_number"] <= 179 & rookies["draft_number"] > 143 & 
+                     !is.na(rookies["draft_number"])] <- 5
+  rookies["round"][rookies["draft_number"] <= 221 & rookies["draft_number"] > 179 & 
+                     !is.na(rookies["draft_number"])] <- 6
+  rookies["round"][rookies["draft_number"] <= 262 & rookies["draft_number"] > 221 & 
+                     !is.na(rookies["draft_number"])] <- 7
+}
+if(year == 2023) {
+  rookies["round"][rookies["draft_number"] <= 31 & !is.na(rookies["draft_number"])] <- 1
+  rookies["round"][rookies["draft_number"] <= 63 & rookies["draft_number"] > 31 & 
+                     !is.na(rookies["draft_number"])] <- 2
+  rookies["round"][rookies["draft_number"] <= 102 & rookies["draft_number"] > 63 & 
+                     !is.na(rookies["draft_number"])] <- 3
+  rookies["round"][rookies["draft_number"] <= 135 & rookies["draft_number"] > 102 & 
+                     !is.na(rookies["draft_number"])] <- 4
+  rookies["round"][rookies["draft_number"] <= 177 & rookies["draft_number"] > 135 & 
+                     !is.na(rookies["draft_number"])] <- 5
+  rookies["round"][rookies["draft_number"] <= 217 & rookies["draft_number"] > 177 & 
+                     !is.na(rookies["draft_number"])] <- 6
+  rookies["round"][rookies["draft_number"] <= 259 & rookies["draft_number"] > 217 & 
+                     !is.na(rookies["draft_number"])] <- 7
+}
+
+head(rookies)
+```
+
+```{r}
+# a simple linear regression on average PFF grades per position by draft round indicates a significant linear relationship (p-value << 0.05)
+# we use the generated linear coefficients to predict rookies' grades by position and round they are drafted
+# note that punter and kicker are not in data frame, as they exhibit no linearity across draft rounds
+
+ol_reg <- c(63, 59, 55, 51, 47, 43, 39, 35)
+db_reg <- c(61.5, 59, 56.5, 54, 51.5, 49, 46.5, 44)
+wr_reg <- c(67, 64, 61, 58, 55, 52, 49, 46)
+dl_reg <- c(62.5, 59, 55.5, 52, 48.5, 45, 41.5, 38)
+rb_reg <- c(74, 70, 66, 62, 58, 54, 50, 46)
+qb_reg <- c(54, 50, 46, 42, 38, 34, 30, 26)
+lb_reg <- c(63, 60, 57, 54, 51, 48, 45, 42)
+rookie_grades <- data.frame(c(1, 2, 3, 4, 5, 6, 7, 8), ol_reg, db_reg, wr_reg, dl_reg, rb_reg, qb_reg, lb_reg)
+colnames(rookie_grades) <- c("Round", "OL", "DB", "WR", "DL", "RB", "QB", "LB")
+```
+
+```{r}
+# to predict rookie kickers, we take the 20th percentile of NFL kicker PFF grades from the previous season
+# similarly, for punters, we take the 20th percentile of NFL punter PFF grades from the previous season
+
+for(it in rookies$gsis_id) {
+  round_rookie <- rookies[rookies$gsis_id == it,]$round[[1]]
+  pos_rookie <- rookies[rookies["gsis_id"] == it,]$position[[1]]
+  if(pos_rookie == "K") {
+    rookies["grade"][rookies["gsis_id"] == it] <- quantile(corrected_data_prev_year[corrected_data_prev_year$position == "K",]$grade, 0.2)[[1]]
+  }
+  else if(pos_rookie == "P") {
+    rookies["grade"][rookies["gsis_id"] == it] <- quantile(corrected_data_prev_year[corrected_data_prev_year$position == "P",]$grade, 0.2)[[1]]
+  }
+  else {
+    rookies["grade"][rookies["gsis_id"] == it] <- rookie_grades[round_rookie, pos_rookie]  
+  }
+}
+
+head(rookies)
+```
+
+```{r}
+# using the weekly roster data from nflverse, assign grades from our PFF grade data frame
+# issue: names are not standardized between PFF and nflverse, no common player ID as well
+# partial solution: use string checker (given by the function levenshteinSim)
+  # if two strings have 100% match, assign the grade and continue
+  # if two strings have > 75% match (chosen through experimentation), assign the grade and record the match
+  # if another string has a higher % match, assign the new grade and record the match
+# algorithm is essentially brute-force; for more players, a binary search should be implemented
+# for our purposes (since the NFL is sufficiently small), we stick to brute-force to search for names
+
+first_names <- c()
+second_names <- c()
+grade <- c()
+iterator <- 1
+data_players["grade"] <- -10
+for(it in data_players$gsis_id) {
+  # remove periods from names to improve string checking accuracy
+  name_it <- str_replace_all(data_players[data_players$gsis_id == it,][1,5], "\\.", "")
+  first_name_it <- sapply(strsplit(name_it, ' '), function(x) x[1])
+  last_name_it <- sapply(strsplit(name_it, ' '), function(x) x[length(x)])
+  pos_it <- data_players[data_players$gsis_id == it,][1,3]
+  team_it <- data_players[data_players$gsis_id == it,][1,2]
+  
+  max <- 0.75
+  best_name_first <- ""
+  best_name_second <- ""
+  for(old in corrected_data_prev_year$player_id) {
+    name_check <- str_replace_all(corrected_data_prev_year[corrected_data_prev_year$player_id == old,][1,1], "\\.", "")
+    first_name_check <- sapply(strsplit(name_check, ' '), function(x) x[1])
+    last_name_check <- sapply(strsplit(name_check, ' '), function(x) x[length(x)])
+    first_grade <- levenshteinSim(first_name_it, first_name_check)
+    second_grade <- levenshteinSim(last_name_it, last_name_check)
+    
+    # weighted average of string similarity percent of first name versus last name; chosen through experimentation
+    
+    avg_grade <- 0.45*first_grade+0.55*second_grade
+    grade_check <- corrected_data_prev_year[corrected_data_prev_year$player_id == old,][1,6]
+    if(avg_grade >= max) {
+      data_players["grade"][data_players["gsis_id"] == it] <- grade_check
+      best_name_first <- name_it
+      best_name_second <- name_check
+      max <- avg_grade
+      
+      # can delete iterator if desired; simply used as a sanity check for progress
+      
+      if(iterator %% 50 == 0) {
+        print(iterator)
+      }
+      iterator <- iterator+1
+    }
+    if(max == 1) {
+      break
+    }
+  }
+  first_names <- c(first_names, best_name_first)
+  second_names <- c(second_names, best_name_second)
+  grade <- c(grade, max)
+}
+```
+
+```{r}
+# filter players with no grade assignment
+
+data_players <- data_players[data_players$grade != -10,]
+
+# filter players with perfect string match
+
+name_testing <- data.frame(first_names, second_names, grade)
+name_testing <- name_testing[name_testing$grade != 1 & name_testing$first_names != "",]
+
+# manually filter players who had a proper string match that was not a perfect string match
+
+if(year == 2015) {
+  name_testing <- name_testing[name_testing$first_names != "Ricky Wagner" & name_testing$first_names != "Zach Orr" & name_testing$first_names != "Nathan Stupar" & 
+                                 name_testing$first_names != "Ronald Leary" & name_testing$first_names != "Demarcus Lawrence" & 
+                                 name_testing$first_names != "Gregory Toler" & name_testing$first_names != "Joshua Mauga" & 
+                                 name_testing$first_names != "Deandre Coleman" & name_testing$first_names != "Rashaun Allen" & 
+                                 name_testing$first_names != "Matthew McGloin" & name_testing$first_names != "Daniel McCullers" & 
+                                 name_testing$first_names != "Steve Johnson" & name_testing$first_names != "Navorro Bowman" & name_testing$first_names != "Steven Hauschka",]
+}
+if(year == 2016) {
+  name_testing <- name_testing[name_testing$first_names != "Zach Orr" & name_testing$first_names != "EJ Manuel" & name_testing$first_names != "Walt Powell" & 
+                                 name_testing$first_names != "Deandre Coleman" & name_testing$first_names != "AJ McCarron" & name_testing$first_names != "Ronald Leary" & 
+                                 name_testing$first_names != "Demarcus Lawrence" & name_testing$first_names != "JC Tretter" & name_testing$first_names != "Mike DeVito" & 
+                                 name_testing$first_names != "Steven Johnson",]
+}
+if(year == 2017) {
+  name_testing <- name_testing[name_testing$first_names != "Matt Judon" & name_testing$first_names != "Steven Johnson" & name_testing$first_names != "Deandre Coleman" & 
+                                 name_testing$first_names != "Cre'von LeBlanc" & name_testing$first_names != "AJ McCarron" & name_testing$first_names != "JC Tretter" & 
+                                 name_testing$first_names != "Demarcus Lawrence" & name_testing$first_names != "Ronald Leary" & name_testing$first_names != "D.J. Reader" & 
+                                 name_testing$first_names != "EJ Manuel" & name_testing$first_names != "Matthew Ioannidis",]
+}
+if(year == 2018) {
+  name_testing <- name_testing[name_testing$first_names != "Takkarist McKinley" & name_testing$first_names != "Matt Judon" & name_testing$first_names != "Mitchell Trubisky" & 
+                                 name_testing$first_names != "JC Tretter" & name_testing$first_names != "Demarcus Lawrence" & name_testing$first_names != "Ronald Leary" & 
+                                 name_testing$first_names != "Cre'von LeBlanc" & name_testing$first_names != "D.J. Reader" & name_testing$first_names != "Donte' Deayon" & 
+                                 name_testing$first_names != "AJ McCarron" & name_testing$first_names != "Josh Perkins" & name_testing$first_names != "Nate Gerry" & 
+                                 name_testing$first_names != "DeVante Bausby" & name_testing$first_names != "Matthew Ioannidis",]
+}
+if(year == 2019) {
+  name_testing <- name_testing[name_testing$first_names != "Takkarist McKinley" & name_testing$first_names != "Foye Oluokun" & name_testing$first_names != "Matt Judon" & 
+                                 name_testing$first_names != "Mitchell Trubisky" & name_testing$first_names != "Demarcus Lawrence" & name_testing$first_names != "Ronald Leary" & 
+                                 name_testing$first_names != "DeVante Bausby" & name_testing$first_names != "Nate Gerry" & name_testing$first_names != "Cre'von LeBlanc" & 
+                                 name_testing$first_names != "Josh Perkins" & name_testing$first_names != "Donte' Deayon" & name_testing$first_names != "Matthew Ioannidis",]
+}
+if(year == 2020) {
+  name_testing <- name_testing[name_testing$first_names != "Takkarist McKinley" & name_testing$first_names != "Foye Oluokun" & name_testing$first_names != "Matt Judon" & 
+                                 name_testing$first_names != "Mitchell Trubisky" & name_testing$first_names != "Daniel McCullers" & name_testing$first_names != "Demarcus Lawrence" & 
+                                 name_testing$first_names != "Ka'Dar Hollman" & name_testing$first_names != "Deandre Baker" & name_testing$first_names != "Cre'von LeBlanc" & 
+                                 name_testing$first_names != "Nate Gerry" & name_testing$first_names != "Obo Okoronkwo" & name_testing$first_names != "Donte Deayon" & 
+                                 name_testing$first_names != "Lano Hill" & name_testing$first_names != "Matthew Ioannidis",]
+}
+if(year == 2021) {
+  name_testing <- name_testing[name_testing$first_names != "Mitchell Trubisky" & name_testing$first_names != "Gabriel Davis" & name_testing$first_names != "Trenton Scott" & 
+                                 name_testing$first_names != "Christopher Hubbard" & name_testing$first_names != "Takkarist McKinley" & name_testing$first_names != "Demarcus Lawrence" & 
+                                 name_testing$first_names != "Khadarel Hodge" & name_testing$first_names != "Yosuah Nijman" & name_testing$first_names != "Julien Davenport" & 
+                                 name_testing$first_names != "DeMichael Harris" & name_testing$first_names != "Davon Hamilton" & name_testing$first_names != "Deandre Baker" & 
+                                 name_testing$first_names != "Christopher Herndon" & name_testing$first_names != "Shaquille Mason" & name_testing$first_names != "Trenton Brown" & 
+                                 name_testing$first_names != "Matt Judon" & name_testing$first_names != "Joseph Noteboom" & name_testing$first_names != "Sebastian Joseph" & 
+                                 name_testing$first_names != "Ogbonnia Okoronkwo" & name_testing$first_names != "Juju Hughes" & name_testing$first_names != "Donte Deayon" & 
+                                 name_testing$first_names != "Jamycal Hasty" & name_testing$first_names != "Jeffery Wilson",]
+}
+if(year == 2022) {
+  name_testing <- name_testing[name_testing$first_names != "Gregory Rousseau" & name_testing$first_names != "Christopher Hubbard" & name_testing$first_names != "Demarcus Lawrence" & 
+                               name_testing$first_names != "Yosuah Nijman" & name_testing$first_names != "Ladarius Hamilton" & name_testing$first_names != "Ogbonnia Okoronkwo" & 
+                               name_testing$first_names != "Jamycal Hasty" & name_testing$first_names != "Davon Hamilton" & name_testing$first_names != "Jeffery Wilson" & 
+                               name_testing$first_names != "Trenton Brown" & name_testing$first_names != "Matt Judon" & name_testing$first_names != "Trevon Moehrig"& 
+                               name_testing$first_names != "Mitchell Trubisky" & name_testing$first_names != "Trenton Scott" & name_testing$first_names != "Joseph Noteboom" & 
+                               name_testing$first_names != "Sebastian Joseph" & name_testing$first_names != "Josh Palmer" & name_testing$first_names != "Shaquille Mason" & 
+                               name_testing$first_names != "Samuel Cosmi" & name_testing$first_names != "William Bradley-King" & name_testing$first_names != "Joe Fortson",]
+}
+if(year == 2023) {
+  name_testing <- name_testing[name_testing$first_names != "Lacale London" & name_testing$first_names != "Gregory Rousseau" & name_testing$first_names != "Ogbonnia Okoronkwo" & 
+                               name_testing$first_names != "Demarcus Lawrence" & name_testing$first_names != "Daron Bland" & name_testing$first_names != "Kavontae Turpin" & 
+                               name_testing$first_names != "Yosuah Nijman" & name_testing$first_names != "Shaquille Mason" & name_testing$first_names != "Jamycal Hasty" & 
+                               name_testing$first_names != "Davon Hamilton" & name_testing$first_names != "Jeffery Wilson" & name_testing$first_names != "Trenton Brown" & 
+                               name_testing$first_names != "Matt Judon" & name_testing$first_names != "Cordale Flott" & name_testing$first_names != "Trevon Moehrig" & 
+                               name_testing$first_names != "Mitchell Trubisky" & name_testing$first_names != "Joseph Noteboom" & name_testing$first_names != "Zachary Thomas" & 
+                               name_testing$first_names != "Sebastian Joseph" & name_testing$first_names != "Josh Palmer" & name_testing$first_names != "Christopher Hubbard" & 
+                               name_testing$first_names != "Samuel Cosmi" & name_testing$first_names != "Trenton Scott",]
+}
+
+head(name_testing)
+
+# remove players marked as a good string match that were incorrect
+
+for(it in name_testing$first_names) {
+  data_players <- data_players[data_players$full_name != it,]
+}
+```
+
+```{r}
+# string checker has some inaccuracies, particularly for players with duplicate names
+# manually change grades for player duplicates
+# we take the actual grade changes out; grade changes here are set to zero.
+
+data_players[duplicated(data_players$full_name),]
+if(year == 2023) {
+  
+# duplicate names
+# Lamar Jackson (QB for BAL and DB for CAR)
+# Josh Allen (QB for BUF and LB for JAX)
+# David Long (LB for MIA and and DB for CAR)
+# Michael Carter (DB for NYJ and RB for ARI)
+# Connor McGovern (OL for NYJ and OL for BUF)
+# Jonah Williams (DL for LA and OL for CIN)
+  
+  data_players["grade"][data_players["full_name"] == "Lamar Jackson" & data_players["team"] == "BAL"] <- 0
+  data_players["grade"][data_players["full_name"] == "Lamar Jackson" & data_players["team"] == "CAR"] <- 0
+  data_players["grade"][data_players["full_name"] == "Josh Allen" & data_players["team"] == "BUF"] <- 0
+  data_players["grade"][data_players["full_name"] == "Josh Allen" & data_players["team"] == "JAX"] <- 0
+  data_players["grade"][data_players["full_name"] == "David Long" & data_players["team"] == "CAR"] <- 0
+  data_players["grade"][data_players["full_name"] == "David Long" & data_players["team"] == "MIA"] <- 0
+  data_players["grade"][data_players["full_name"] == "Michael Carter" & data_players["team"] == "NYJ"] <- 0
+  data_players["grade"][data_players["full_name"] == "Michael Carter" & data_players["team"] == "ARI"] <- 0
+  data_players["grade"][data_players["full_name"] == "Connor McGovern" & data_players["team"] == "NYJ"] <- 0
+  data_players["grade"][data_players["full_name"] == "Connor McGovern" & data_players["team"] == "BUF"] <- 0
+  data_players["grade"][data_players["full_name"] == "Jonah Williams" & data_players["team"] == "CIN"] <- 0
+  data_players["grade"][data_players["full_name"] == "Jonah Williams"& data_players["team"] == "LA"] <- 0
+}
+if(year == 2022) {
+  
+# duplicate names  
+# Spencer Brown (OL for BUF and RB for CAR)
+# Lamar Jackson (QB for BAL and DB for CHI)
+# A.J. Green (WR for ARI and DB for CLE)
+# Josh Allen (QB for BUF and LB for JAX)
+# Michael Thomas (DB for CIN and WR for NO)
+# Connor McGovern (OL for DAL and OL for NYJ)
+# Michael Carter (DB for NYJ and RB for NYJ)
+# Jonah Williams (OL for CIN and DL for LA)
+# Kyle Fuller (DB for BAL and OL for SEA)
+# Josh Jones (OL for ARI and DB for SEA)
+# David Long (DB for LA and LB for TEN)
+  
+  data_players["grade"][data_players["full_name"] == "Spencer Brown" & data_players["team"] == "CAR"] <- 0
+  data_players["grade"][data_players["full_name"] == "Spencer Brown" & data_players["team"] == "BUF"] <- 0
+  data_players["grade"][data_players["full_name"] == "Lamar Jackson" & data_players["team"] == "BAL"] <- 0
+  data_players["grade"][data_players["full_name"] == "Lamar Jackson" & data_players["team"] == "CHI"] <- 0
+  data_players["grade"][data_players["full_name"] == "A.J. Green" & data_players["team"] == "ARI"] <- 0
+  data_players["grade"][data_players["full_name"] == "A.J. Green" & data_players["team"] == "CLE"] <- 0
+  data_players["grade"][data_players["full_name"] == "Josh Allen" & data_players["team"] == "BUF"] <- 0
+  data_players["grade"][data_players["full_name"] == "Josh Allen" & data_players["team"] == "JAX"] <- 0
+  data_players["grade"][data_players["full_name"] == "Michael Thomas" & data_players["team"] == "NO"] <- 0
+  data_players["grade"][data_players["full_name"] == "Michael Thomas" & data_players["team"] == "CIN"] <- 0
+  data_players["grade"][data_players["full_name"] == "Connor McGovern" & data_players["team"] == "NYJ"] <- 0
+  data_players["grade"][data_players["full_name"] == "Connor McGovern" & data_players["team"] == "DAL"] <- 0
+  data_players["grade"][data_players["full_name"] == "Michael Carter" & data_players["position"] == "DB"] <- 0
+  data_players["grade"][data_players["full_name"] == "Michael Carter" & data_players["position"] == "RB"] <- 0
+  data_players["grade"][data_players["full_name"] == "Jonah Williams" & data_players["team"] == "CIN"] <- 0
+  data_players["grade"][data_players["full_name"] == "Jonah Williams"& data_players["team"] == "LA"] <- 0
+  data_players["grade"][data_players["full_name"] == "Kyle Fuller" & data_players["team"] == "BAL"] <- 0
+  data_players["grade"][data_players["full_name"] == "Kyle Fuller"& data_players["team"] == "SEA"] <- 0
+  data_players["grade"][data_players["full_name"] == "Josh Jones" & data_players["team"] == "ARI"] <- 0
+  data_players["grade"][data_players["full_name"] == "Josh Jones"& data_players["team"] == "SEA"] <- 0
+  data_players["grade"][data_players["full_name"] == "David Long" & data_players["team"] == "LA"] <- 0
+  data_players["grade"][data_players["full_name"] == "David Long"& data_players["team"] == "TEN"] <- 0
+}
+if(year == 2021) {
+  
+# duplicate names  
+# Andre Smith (OL for BAL and LB for BUF)
+# A.J. Green (WR for ARI and DB for CLE)
+# Josh Jones (OL for ARI and DB for IND)
+# Josh Allen (QB for BUF and LB for JAX)
+# Connor McGovern (OL for DAL and OL for NYJ)
+# Lamar Jackson (QB for BAL and DB for NYJ)
+# Brian Allen (DB for CLE and OL for LA)
+# Kyler Fuller (DB for DEN and OL for SEA)
+# David Long (DB for LA and LB for TEN)
+# Chris Jones (DL for KC and DB for TEN)
+  
+  data_players["grade"][data_players["full_name"] == "Andre Smith" & data_players["team"] == "BAL"] <- 0
+  data_players["grade"][data_players["full_name"] == "Andre Smith"& data_players["team"] == "BUF"] <- 0
+  data_players["grade"][data_players["full_name"] == "A.J. Green" & data_players["team"] == "ARI"] <- 0
+  data_players["grade"][data_players["full_name"] == "A.J. Green" & data_players["team"] == "CLE"] <- 0
+  data_players["grade"][data_players["full_name"] == "Josh Jones" & data_players["team"] == "ARI"] <- 0
+  data_players["grade"][data_players["full_name"] == "Josh Jones"& data_players["team"] == "IND"] <- 0
+  data_players["grade"][data_players["full_name"] == "Josh Allen" & data_players["team"] == "BUF"] <- 0
+  data_players["grade"][data_players["full_name"] == "Josh Allen" & data_players["team"] == "JAX"] <- 0
+  data_players["grade"][data_players["full_name"] == "Connor McGovern" & data_players["team"] == "NYJ"] <- 0
+  data_players["grade"][data_players["full_name"] == "Connor McGovern" & data_players["team"] == "DAL"] <- 0
+  data_players["grade"][data_players["full_name"] == "Lamar Jackson" & data_players["team"] == "BAL"] <- 0
+  data_players["grade"][data_players["full_name"] == "Lamar Jackson" & data_players["team"] == "CHI"] <- 0
+  data_players["grade"][data_players["full_name"] == "Brian Allen" & data_players["team"] == "CLE"] <- 0
+  data_players["grade"][data_players["full_name"] == "Brian Allen" & data_players["team"] == "LA"] <- 0
+  data_players["grade"][data_players["full_name"] == "Kyle Fuller" & data_players["team"] == "DEN"] <- 0
+  data_players["grade"][data_players["full_name"] == "Kyle Fuller"& data_players["team"] == "SEA"] <- 0
+  data_players["grade"][data_players["full_name"] == "David Long" & data_players["team"] == "LA"] <- 0
+  data_players["grade"][data_players["full_name"] == "David Long"& data_players["team"] == "TEN"] <- 0
+  data_players["grade"][data_players["full_name"] == "Chris Jones" & data_players["team"] == "KC"] <- 0
+  data_players["grade"][data_players["full_name"] == "Chris Jones"& data_players["team"] == "TEN"] <- 0
+}
+if(year == 2020) {
+  
+# duplicate names
+# Josh Allen (QB for BUF and DL for JAX)
+# Chris Jones (DL for KC and P for DAL)
+# Michael Thomas (WR for NO and DB for HOU)
+# Connor McGovern (OL for NYJ and OL for DAL)
+# Kyle Fuller (DB for CHI and OL for SEA)
+# David Long (DB for LA and LB for TEN)
+  
+  data_players["grade"][data_players["full_name"] == "Josh Allen" & data_players["team"] == "BUF"] <- 0
+  data_players["grade"][data_players["full_name"] == "Josh Allen" & data_players["team"] == "JAX"] <- 0
+  data_players["grade"][data_players["full_name"] == "Chris Jones" & data_players["team"] == "KC"] <- 0
+  data_players["grade"][data_players["full_name"] == "Chris Jones" & data_players["team"] == "DAL"] <- 0
+  data_players["grade"][data_players["full_name"] == "Michael Thomas" & data_players["team"] == "NO"] <- 0
+  data_players["grade"][data_players["full_name"] == "Michael Thomas" & data_players["team"] == "HOU"] <- 0
+  data_players["grade"][data_players["full_name"] == "Connor McGovern" & data_players["team"] == "NYJ"] <- 0
+  data_players["grade"][data_players["full_name"] == "Connor McGovern" & data_players["team"] == "DAL"] <- 0
+  data_players["grade"][data_players["full_name"] == "Kyle Fuller" & data_players["team"] == "CHI"] <- 0
+  data_players["grade"][data_players["full_name"] == "Kyle Fuller"& data_players["team"] == "SEA"] <- 0
+  data_players["grade"][data_players["full_name"] == "David Long" & data_players["team"] == "LA"] <- 0
+  data_players["grade"][data_players["full_name"] == "David Long"& data_players["team"] == "TEN"] <- 0
+}
+if(year == 2019) {
+  
+# duplicate names
+# Chris Jones (DB for ARI, P for DAL, and DL for KC)
+# Michael Thomas (WR for NO and DB for NYG)
+# Kyle Fuller (DB for CHI and OL for SEA)
+# Ryan Griffin (QB for TB and WR for NYJ)
+  
+  data_players["grade"][data_players["full_name"] == "Chris Jones" & data_players["team"] == "ARI"] <- 0
+  data_players["grade"][data_players["full_name"] == "Chris Jones" & data_players["team"] == "DAL"] <- 0
+  data_players["grade"][data_players["full_name"] == "Chris Jones" & data_players["team"] == "KC"] <- 0
+  data_players["grade"][data_players["full_name"] == "Michael Thomas" & data_players["team"] == "NO"] <- 0
+  data_players["grade"][data_players["full_name"] == "Michael Thomas" & data_players["team"] == "NYG"] <- 0
+  data_players["grade"][data_players["full_name"] == "Kyle Fuller" & data_players["team"] == "CHI"] <- 0
+  data_players["grade"][data_players["full_name"] == "Kyle Fuller"& data_players["team"] == "SEA"] <- 0
+  data_players["grade"][data_players["full_name"] == "Ryan Griffin" & data_players["team"] == "TB"] <- 0
+  data_players["grade"][data_players["full_name"] == "Ryan Griffin"& data_players["team"] == "NYJ"] <- 0
+}
+if(year == 2018) {
+  
+# duplicate names
+# Brandon Williams (DB for ARI and DL for BAL)
+# Chris Jones (P for DAL and DL for KC)
+# Marcus Williams (DB for CHI and DB for NO)
+# Brandon Marshall (LB for DEN and WR for NO)
+# Michael Thomas (WR for NO and DB for NYG)
+# Michael Bennett (DL for ATL and DL for PHI)
+# Nick Williams (WR for LA and DL for CHI)
+# Ryan Griffin (WR for HOU and QB for TB)
+# Isaiah Johnson (DB for LA and DB for TB)
+  
+  data_players["grade"][data_players["full_name"] == "Brandon Williams" & data_players["team"] == "ARI"] <- 0
+  data_players["grade"][data_players["full_name"] == "Brandon Williams"& data_players["team"] == "BAL"] <- 0
+  data_players["grade"][data_players["full_name"] == "Chris Jones" & data_players["team"] == "KC"] <- 0
+  data_players["grade"][data_players["full_name"] == "Chris Jones" & data_players["team"] == "DAL"] <- 0
+  data_players["grade"][data_players["full_name"] == "Marcus Williams" & data_players["team"] == "CHI"] <- 0
+  data_players["grade"][data_players["full_name"] == "Marcus Williams" & data_players["team"] == "NO"] <- 0
+  data_players["grade"][data_players["full_name"] == "Brandon Marshall" & data_players["team"] == "DEN"] <- 0
+  data_players["grade"][data_players["full_name"] == "Brandon Marshall" & data_players["team"] == "NO"] <- 0
+  data_players["grade"][data_players["full_name"] == "Michael Thomas" & data_players["team"] == "NO"] <- 0
+  data_players["grade"][data_players["full_name"] == "Michael Thomas" & data_players["team"] == "NYG"] <- 0
+  data_players["grade"][data_players["full_name"] == "Michael Bennett" & data_players["team"] == "ATL"] <- 0
+  data_players["grade"][data_players["full_name"] == "Michael Bennett" & data_players["team"] == "PHI"] <- 0
+  data_players["grade"][data_players["full_name"] == "Nick Williams" & data_players["team"] == "CHI"] <- 0
+  data_players["grade"][data_players["full_name"] == "Nick Williams" & data_players["team"] == "LA"] <- 0
+  data_players["grade"][data_players["full_name"] == "Ryan Griffin" & data_players["team"] == "HOU"] <- 0
+  data_players["grade"][data_players["full_name"] == "Ryan Griffin" & data_players["team"] == "TB"] <- 0
+  data_players["grade"][data_players["full_name"] == "Isaiah Johnson" & data_players["team"] == "TB"] <- 0
+}
+if(year == 2017) {
+  
+# duplicate names
+# Brandon Williams (DB for ARI, DL for BAL, and WR for IND)
+# Joe Thomas (OL for CLE and LB for GB)
+# Chris Jones (P for DAL and DL for KC)
+# Michael Thomas (WR for NO and DB for MIA)
+# Brandon Marshall (LB for DEN and WR for NYG)
+# Michael Bennett (DL for JAX and DL for SEA)
+# Isaiah Johnson (DB for LA and DB for TB)
+# Ryan Griffin (WR for HOU and QB for TB)
+  
+  data_players["grade"][data_players["full_name"] == "Brandon Williams" & data_players["team"] == "ARI"] <- 0
+  data_players["grade"][data_players["full_name"] == "Brandon Williams"& data_players["team"] == "BAL"] <- 0
+  data_players["grade"][data_players["full_name"] == "Brandon Williams" & data_players["team"] == "IND"] <- 0
+  data_players["grade"][data_players["full_name"] == "Joe Thomas"& data_players["team"] == "CLE"] <- 0
+  data_players["grade"][data_players["full_name"] == "Joe Thomas" & data_players["team"] == "GB"] <- 0
+  data_players["grade"][data_players["full_name"] == "Chris Jones" & data_players["team"] == "KC"] <- 0
+  data_players["grade"][data_players["full_name"] == "Chris Jones" & data_players["team"] == "DAL"] <- 0
+  data_players["grade"][data_players["full_name"] == "Michael Thomas" & data_players["team"] == "NO"] <- 0
+  data_players["grade"][data_players["full_name"] == "Michael Thomas" & data_players["team"] == "MIA"] <- 0
+  data_players["grade"][data_players["full_name"] == "Brandon Marshall" & data_players["team"] == "DEN"] <- 0
+  data_players["grade"][data_players["full_name"] == "Brandon Marshall" & data_players["team"] == "NYG"] <- 0
+  data_players["grade"][data_players["full_name"] == "Michael Bennett" & data_players["team"] == "JAX"] <- 0
+  data_players["grade"][data_players["full_name"] == "Michael Bennett" & data_players["team"] == "SEA"] <- 0
+  data_players["grade"][data_players["full_name"] == "Isaiah Johnson" & data_players["team"] == "TB"] <- 0
+  data_players["grade"][data_players["full_name"] == "Isaiah Johnson" & data_players["team"] == "LA"] <- 0
+  data_players["grade"][data_players["full_name"] == "Ryan Griffin" & data_players["team"] == "TB"] <- 0
+  data_players["grade"][data_players["full_name"] == "Ryan Griffin"& data_players["team"] == "HOU"] <- 0
+}
+if(year == 2016) {
+  
+# duplicate names
+# Joe Thomas (OL for CLE and LB for GB)
+# Mike Adams (OL for CHI and DB for IND)
+# Nick Williams (WR for ATL and DL for KC)
+# Chris Jones (P for DAL and DL for MIA)
+# Brandon Marshall (LB for DEN and WR for NYJ)
+# Taiwan Jones (LB at NYJ and RB at OAK)
+# David Johnson (RB for ARI and WR for PIT)
+# Brandon Williams (DL for BAL and WR for SEA)
+# Ryan Griffin (WR for HOU and QB for TB)
+# Alex Smith (QB for KC and WR for WAS)
+  
+  data_players["grade"][data_players["full_name"] == "Joe Thomas" & data_players["team"] == "CLE"] <- 0
+  data_players["grade"][data_players["full_name"] == "Joe Thomas" & data_players["team"] == "GB"] <- 0
+  data_players["grade"][data_players["full_name"] == "Mike Adams"& data_players["team"] == "CHI"] <- 0
+  data_players["grade"][data_players["full_name"] == "Mike Adams" & data_players["team"] == "IND"] <- 0
+  data_players["grade"][data_players["full_name"] == "Nick Williams" & data_players["team"] == "ATL"] <- 0
+  data_players["grade"][data_players["full_name"] == "Nick Williams"& data_players["team"] == "KC"] <- 0
+  data_players["grade"][data_players["full_name"] == "Chris Jones" & data_players["team"] == "MIA"] <- 0
+  data_players["grade"][data_players["full_name"] == "Chris Jones" & data_players["team"] == "DAL"] <- 0
+  data_players["grade"][data_players["full_name"] == "Brandon Marshall" & data_players["team"] == "DEN"] <- 0
+  data_players["grade"][data_players["full_name"] == "Brandon Marshall" & data_players["team"] == "NYJ"] <- 0
+  data_players["grade"][data_players["full_name"] == "Taiwan Jones" & data_players["team"] == "NYJ"] <- 0
+  data_players["grade"][data_players["full_name"] == "Taiwan Jones" & data_players["team"] == "OAK"] <- 0
+  data_players["grade"][data_players["full_name"] == "David Johnson" & data_players["team"] == "ARI"] <- 0
+  data_players["grade"][data_players["full_name"] == "David Johnson" & data_players["team"] == "PIT"] <- 0
+  data_players["grade"][data_players["full_name"] == "Brandon Williams" & data_players["team"] == "BAL"] <- 0
+  data_players["grade"][data_players["full_name"] == "Brandon Williams" & data_players["team"] == "SEA"] <- 0
+  data_players["grade"][data_players["full_name"] == "Ryan Griffin" & data_players["team"] == "TB"] <- 0
+  data_players["grade"][data_players["full_name"] == "Ryan Griffin"& data_players["team"] == "HOU"] <- 0
+  data_players["grade"][data_players["full_name"] == "Alex Smith" & data_players["team"] == "KC"] <- 0
+  data_players["grade"][data_players["full_name"] == "Alex Smith"& data_players["team"] == "WAS"] <- 0
+}
+if(year == 2015) {
+  
+# duplicated players
+# Joe Thomas (OL for CLV and LB for GB)
+# Chris Clemons (DB for ARZ and DL for JAX)
+# Charles Johnson (DL for CAR and WR for MIN)
+# Brandon Marshall (LB for DEN and WR for NYJ)
+# Ryan Griffin (WR for HOU and QB for TB)
+# Alex Smith (QB for KC and WR for WAS)
+  
+  data_players["grade"][data_players["full_name"] == "Joe Thomas" & data_players["team"] == "CLE"] <- 0
+  data_players["grade"][data_players["full_name"] == "Joe Thomas" & data_players["team"] == "GB"] <- 0
+  data_players["grade"][data_players["full_name"] == "Chris Clemons" & data_players["team"] == "ARZ"] <- 0
+  data_players["grade"][data_players["full_name"] == "Chris Clemons" & data_players["team"] == "JAX"] <- 0
+  data_players["grade"][data_players["full_name"] == "Charles Johnson" & data_players["team"] == "CAR"] <- 0
+  data_players["grade"][data_players["full_name"] == "Charles Johnson" & data_players["team"] == "MIN"] <- 0
+  data_players["grade"][data_players["full_name"] == "Brandon Marshall" & data_players["team"] == "DEN"] <- 0
+  data_players["grade"][data_players["full_name"] == "Brandon Marshall" & data_players["team"] == "NYJ"] <- 0
+  data_players["grade"][data_players["full_name"] == "Ryan Griffin" & data_players["team"] == "TB"] <- 0
+  data_players["grade"][data_players["full_name"] == "Ryan Griffin"& data_players["team"] == "HOU"] <- 0
+  data_players["grade"][data_players["full_name"] == "Alex Smith" & data_players["team"] == "KC"] <- 0
+  data_players["grade"][data_players["full_name"] == "Alex Smith"& data_players["team"] == "WAS"] <- 0
+}
+```
+
+```{r}
+# merge general PFF grades and predicted rookie grades
+
+data_players <- data_players[data_players$grade != -10,]
+edited.rookies <- rookies[,c(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 15, 17)]
+
+df_list <- list(data_players, edited.rookies)
+data_players <- df_list %>% reduce(full_join, by = c("season", "team", "position", "status", "full_name", "first_name", "last_name", "gsis_id", "pff_id", "years_exp",
+                                                     "week", "game_type", "rookie_year", "team_number", "grade"))
+
+head(data_players)
+```
+
+```{r}
+# split PFF grades into separate team rosters
+
+data_players <- data_players[order(data_players$team_number, data_players$position, -data_players$grade),]
+ARZ <- data_players[data_players$team_number == 1,]
+ATL <- data_players[data_players$team_number == 2,]
+BLT <- data_players[data_players$team_number == 3,]
+BUF <- data_players[data_players$team_number == 4,]
+CAR <- data_players[data_players$team_number == 5,]
+CHI <- data_players[data_players$team_number == 6,]
+CIN <- data_players[data_players$team_number == 7,]
+CLV <- data_players[data_players$team_number == 8,]
+DAL <- data_players[data_players$team_number == 9,]
+DEN <- data_players[data_players$team_number == 10,]
+DET <- data_players[data_players$team_number == 11,]
+GB <- data_players[data_players$team_number == 12,]
+HST <- data_players[data_players$team_number == 13,]
+IND <- data_players[data_players$team_number == 14,]
+JAX <- data_players[data_players$team_number == 15,]
+KC <- data_players[data_players$team_number == 16,]
+MIA <- data_players[data_players$team_number == 17,]
+MIN <- data_players[data_players$team_number == 18,]
+NE <- data_players[data_players$team_number == 19,]
+NO <- data_players[data_players$team_number == 20,]
+NYG <- data_players[data_players$team_number == 21,]
+NYJ <- data_players[data_players$team_number == 22,]
+LV_OAK <- data_players[data_players$team_number == 23,]
+PHI <- data_players[data_players$team_number == 24,]
+PIT <- data_players[data_players$team_number == 25,]
+LA_SL <- data_players[data_players$team_number == 26,]
+LAC_SD <- data_players[data_players$team_number == 27,]
+SF <- data_players[data_players$team_number == 28,]
+SEA <- data_players[data_players$team_number == 29,]
+TB <- data_players[data_players$team_number == 30,]
+TEN <- data_players[data_players$team_number == 31,]
+WAS <- data_players[data_players$team_number == 32,]
+```
+
+```{r}
+# calculate average positional grades per team
+# number of defensive backs: 3
+# number of defensive linemen: 3
+# number of kickers: 1
+# number of linebackers: 1
+# number of offensive line: 3
+# number of punters: 1
+# number of quarterbacks: 1
+# number of running backs: 1
+# number of wide receivers: 2
+
+ARZ_data <- c(mean(ARZ[ARZ$position == "DB",]$grade[1:3]), 
+              mean(ARZ[ARZ$position == "DL",]$grade[1:3]), 
+              mean(ARZ[ARZ$position == "K",]$grade[1:1]), 
+              mean(ARZ[ARZ$position == "LB",]$grade[1:1]), 
+              mean(ARZ[ARZ$position == "OL",]$grade[1:3]), 
+              mean(ARZ[ARZ$position == "P",]$grade[1:1]), 
+              mean(ARZ[ARZ$position == "QB",]$grade[1:1]), 
+              mean(ARZ[ARZ$position == "RB",]$grade[1:1]), 
+              mean(ARZ[ARZ$position == "WR",]$grade[1:2]))/100
+
+ATL_data <- c(mean(ATL[ATL$position == "DB",]$grade[1:3]), 
+              mean(ATL[ATL$position == "DL",]$grade[1:3]), 
+              mean(ATL[ATL$position == "K",]$grade[1:1]), 
+              mean(ATL[ATL$position == "LB",]$grade[1:1]), 
+              mean(ATL[ATL$position == "OL",]$grade[1:3]), 
+              mean(ATL[ATL$position == "P",]$grade[1:1]), 
+              mean(ATL[ATL$position == "QB",]$grade[1:1]), 
+              mean(ATL[ATL$position == "RB",]$grade[1:1]), 
+              mean(ATL[ATL$position == "WR",]$grade[1:2]))/100
+
+BLT_data <- c(mean(BLT[BLT$position == "DB",]$grade[1:3]), 
+              mean(BLT[BLT$position == "DL",]$grade[1:3]), 
+              mean(BLT[BLT$position == "K",]$grade[1:1]), 
+              mean(BLT[BLT$position == "LB",]$grade[1:1]), 
+              mean(BLT[BLT$position == "OL",]$grade[1:3]), 
+              mean(BLT[BLT$position == "P",]$grade[1:1]), 
+              mean(BLT[BLT$position == "QB",]$grade[1:1]), 
+              mean(BLT[BLT$position == "RB",]$grade[1:1]), 
+              mean(BLT[BLT$position == "WR",]$grade[1:2]))/100
+
+BUF_data <- c(mean(BUF[BUF$position == "DB",]$grade[1:3]), 
+              mean(BUF[BUF$position == "DL",]$grade[1:3]), 
+              mean(BUF[BUF$position == "K",]$grade[1:1]), 
+              mean(BUF[BUF$position == "LB",]$grade[1:1]), 
+              mean(BUF[BUF$position == "OL",]$grade[1:3]), 
+              mean(BUF[BUF$position == "P",]$grade[1:1]), 
+              mean(BUF[BUF$position == "QB",]$grade[1:1]), 
+              mean(BUF[BUF$position == "RB",]$grade[1:1]), 
+              mean(BUF[BUF$position == "WR",]$grade[1:2]))/100
+
+CAR_data <- c(mean(CAR[CAR$position == "DB",]$grade[1:3]), 
+              mean(CAR[CAR$position == "DL",]$grade[1:3]), 
+              mean(CAR[CAR$position == "K",]$grade[1:1]), 
+              mean(CAR[CAR$position == "LB",]$grade[1:1]), 
+              mean(CAR[CAR$position == "OL",]$grade[1:3]), 
+              mean(CAR[CAR$position == "P",]$grade[1:1]), 
+              mean(CAR[CAR$position == "QB",]$grade[1:1]), 
+              mean(CAR[CAR$position == "RB",]$grade[1:1]), 
+              mean(CAR[CAR$position == "WR",]$grade[1:2]))/100
+
+CHI_data <- c(mean(CHI[CHI$position == "DB",]$grade[1:3]), 
+              mean(CHI[CHI$position == "DL",]$grade[1:3]), 
+              mean(CHI[CHI$position == "K",]$grade[1:1]), 
+              mean(CHI[CHI$position == "LB",]$grade[1:1]), 
+              mean(CHI[CHI$position == "OL",]$grade[1:3]), 
+              mean(CHI[CHI$position == "P",]$grade[1:1]), 
+              mean(CHI[CHI$position == "QB",]$grade[1:1]), 
+              mean(CHI[CHI$position == "RB",]$grade[1:1]), 
+              mean(CHI[CHI$position == "WR",]$grade[1:2]))/100
+
+CIN_data <- c(mean(CIN[CIN$position == "DB",]$grade[1:3]), 
+              mean(CIN[CIN$position == "DL",]$grade[1:3]), 
+              mean(CIN[CIN$position == "K",]$grade[1:1]), 
+              mean(CIN[CIN$position == "LB",]$grade[1:1]), 
+              mean(CIN[CIN$position == "OL",]$grade[1:3]), 
+              mean(CIN[CIN$position == "P",]$grade[1:1]), 
+              mean(CIN[CIN$position == "QB",]$grade[1:1]), 
+              mean(CIN[CIN$position == "RB",]$grade[1:1]), 
+              mean(CIN[CIN$position == "WR",]$grade[1:2]))/100
+
+CLV_data <- c(mean(CLV[CLV$position == "DB",]$grade[1:3]), 
+              mean(CLV[CLV$position == "DL",]$grade[1:3]), 
+              mean(CLV[CLV$position == "K",]$grade[1:1]), 
+              mean(CLV[CLV$position == "LB",]$grade[1:1]), 
+              mean(CLV[CLV$position == "OL",]$grade[1:3]), 
+              mean(CLV[CLV$position == "P",]$grade[1:1]), 
+              mean(CLV[CLV$position == "QB",]$grade[1:1]), 
+              mean(CLV[CLV$position == "RB",]$grade[1:1]), 
+              mean(CLV[CLV$position == "WR",]$grade[1:2]))/100
+
+DAL_data <- c(mean(DAL[DAL$position == "DB",]$grade[1:3]), 
+              mean(DAL[DAL$position == "DL",]$grade[1:3]), 
+              mean(DAL[DAL$position == "K",]$grade[1:1]), 
+              mean(DAL[DAL$position == "LB",]$grade[1:1]), 
+              mean(DAL[DAL$position == "OL",]$grade[1:3]), 
+              mean(DAL[DAL$position == "P",]$grade[1:1]), 
+              mean(DAL[DAL$position == "QB",]$grade[1:1]), 
+              mean(DAL[DAL$position == "RB",]$grade[1:1]), 
+              mean(DAL[DAL$position == "WR",]$grade[1:2]))/100
+
+DEN_data <- c(mean(DEN[DEN$position == "DB",]$grade[1:3]), 
+              mean(DEN[DEN$position == "DL",]$grade[1:3]), 
+              mean(DEN[DEN$position == "K",]$grade[1:1]), 
+              mean(DEN[DEN$position == "LB",]$grade[1:1]), 
+              mean(DEN[DEN$position == "OL",]$grade[1:3]), 
+              mean(DEN[DEN$position == "P",]$grade[1:1]), 
+              mean(DEN[DEN$position == "QB",]$grade[1:1]), 
+              mean(DEN[DEN$position == "RB",]$grade[1:1]), 
+              mean(DEN[DEN$position == "WR",]$grade[1:2]))/100
+
+DET_data <- c(mean(DET[DET$position == "DB",]$grade[1:3]), 
+              mean(DET[DET$position == "DL",]$grade[1:3]), 
+              mean(DET[DET$position == "K",]$grade[1:1]), 
+              mean(DET[DET$position == "LB",]$grade[1:1]), 
+              mean(DET[DET$position == "OL",]$grade[1:3]), 
+              mean(DET[DET$position == "P",]$grade[1:1]), 
+              mean(DET[DET$position == "QB",]$grade[1:1]), 
+              mean(DET[DET$position == "RB",]$grade[1:1]), 
+              mean(DET[DET$position == "WR",]$grade[1:2]))/100
+
+GB_data <- c(mean(GB[GB$position == "DB",]$grade[1:3]), 
+             mean(GB[GB$position == "DL",]$grade[1:3]), 
+             mean(GB[GB$position == "K",]$grade[1:1]), 
+             mean(GB[GB$position == "LB",]$grade[1:1]), 
+             mean(GB[GB$position == "OL",]$grade[1:3]), 
+             mean(GB[GB$position == "P",]$grade[1:1]), 
+             mean(GB[GB$position == "QB",]$grade[1:1]), 
+             mean(GB[GB$position == "RB",]$grade[1:1]), 
+             mean(GB[GB$position == "WR",]$grade[1:2]))/100
+
+HST_data <- c(mean(HST[HST$position == "DB",]$grade[1:3]), 
+              mean(HST[HST$position == "DL",]$grade[1:3]), 
+              mean(HST[HST$position == "K",]$grade[1:1]), 
+              mean(HST[HST$position == "LB",]$grade[1:1]), 
+              mean(HST[HST$position == "OL",]$grade[1:3]), 
+              mean(HST[HST$position == "P",]$grade[1:1]), 
+              mean(HST[HST$position == "QB",]$grade[1:1]), 
+              mean(HST[HST$position == "RB",]$grade[1:1]), 
+              mean(HST[HST$position == "WR",]$grade[1:2]))/100
+
+IND_data <- c(mean(IND[IND$position == "DB",]$grade[1:3]), 
+              mean(IND[IND$position == "DL",]$grade[1:3]), 
+              mean(IND[IND$position == "K",]$grade[1:1]), 
+              mean(IND[IND$position == "LB",]$grade[1:1]), 
+              mean(IND[IND$position == "OL",]$grade[1:3]), 
+              mean(IND[IND$position == "P",]$grade[1:1]), 
+              mean(IND[IND$position == "QB",]$grade[1:1]), 
+              mean(IND[IND$position == "RB",]$grade[1:1]), 
+              mean(IND[IND$position == "WR",]$grade[1:2]))/100
+
+JAX_data <- c(mean(JAX[JAX$position == "DB",]$grade[1:3]), 
+              mean(JAX[JAX$position == "DL",]$grade[1:3]), 
+              mean(JAX[JAX$position == "K",]$grade[1:1]), 
+              mean(JAX[JAX$position == "LB",]$grade[1:1]), 
+              mean(JAX[JAX$position == "OL",]$grade[1:3]), 
+              mean(JAX[JAX$position == "P",]$grade[1:1]), 
+              mean(JAX[JAX$position == "QB",]$grade[1:1]), 
+              mean(JAX[JAX$position == "RB",]$grade[1:1]), 
+              mean(JAX[JAX$position == "WR",]$grade[1:2]))/100
+
+KC_data <- c(mean(KC[KC$position == "DB",]$grade[1:3]), 
+             mean(KC[KC$position == "DL",]$grade[1:3]), 
+             mean(KC[KC$position == "K",]$grade[1:1]), 
+             mean(KC[KC$position == "LB",]$grade[1:1]), 
+             mean(KC[KC$position == "OL",]$grade[1:3]), 
+             mean(KC[KC$position == "P",]$grade[1:1]), 
+             mean(KC[KC$position == "QB",]$grade[1:1]), 
+             mean(KC[KC$position == "RB",]$grade[1:1]), 
+             mean(KC[KC$position == "WR",]$grade[1:2]))/100
+
+MIA_data <- c(mean(MIA[MIA$position == "DB",]$grade[1:3]), 
+              mean(MIA[MIA$position == "DL",]$grade[1:3]), 
+              mean(MIA[MIA$position == "K",]$grade[1:1]), 
+              mean(MIA[MIA$position == "LB",]$grade[1:1]), 
+              mean(MIA[MIA$position == "OL",]$grade[1:3]), 
+              mean(MIA[MIA$position == "P",]$grade[1:1]), 
+              mean(MIA[MIA$position == "QB",]$grade[1:1]), 
+              mean(MIA[MIA$position == "RB",]$grade[1:1]), 
+              mean(MIA[MIA$position == "WR",]$grade[1:2]))/100
+
+MIN_data <- c(mean(MIN[MIN$position == "DB",]$grade[1:3]), 
+              mean(MIN[MIN$position == "DL",]$grade[1:3]), 
+              mean(MIN[MIN$position == "K",]$grade[1:1]), 
+              mean(MIN[MIN$position == "LB",]$grade[1:1]), 
+              mean(MIN[MIN$position == "OL",]$grade[1:3]), 
+              mean(MIN[MIN$position == "P",]$grade[1:1]), 
+              mean(MIN[MIN$position == "QB",]$grade[1:1]), 
+              mean(MIN[MIN$position == "RB",]$grade[1:1]), 
+              mean(MIN[MIN$position == "WR",]$grade[1:2]))/100
+
+NE_data <- c(mean(NE[NE$position == "DB",]$grade[1:3]), 
+             mean(NE[NE$position == "DL",]$grade[1:3]), 
+             mean(NE[NE$position == "K",]$grade[1:1]), 
+             mean(NE[NE$position == "LB",]$grade[1:1]), 
+             mean(NE[NE$position == "OL",]$grade[1:3]), 
+             mean(NE[NE$position == "P",]$grade[1:1]), 
+             mean(NE[NE$position == "QB",]$grade[1:1]), 
+             mean(NE[NE$position == "RB",]$grade[1:1]), 
+             mean(NE[NE$position == "WR",]$grade[1:2]))/100
+
+NO_data <- c(mean(NO[NO$position == "DB",]$grade[1:3]), 
+             mean(NO[NO$position == "DL",]$grade[1:3]), 
+             mean(NO[NO$position == "K",]$grade[1:1]), 
+             mean(NO[NO$position == "LB",]$grade[1:1]), 
+             mean(NO[NO$position == "OL",]$grade[1:3]), 
+             mean(NO[NO$position == "P",]$grade[1:1]), 
+             mean(NO[NO$position == "QB",]$grade[1:1]), 
+             mean(NO[NO$position == "RB",]$grade[1:1]), 
+             mean(NO[NO$position == "WR",]$grade[1:2]))/100
+
+NYG_data <- c(mean(NYG[NYG$position == "DB",]$grade[1:3]), 
+              mean(NYG[NYG$position == "DL",]$grade[1:3]), 
+              mean(NYG[NYG$position == "K",]$grade[1:1]), 
+              mean(NYG[NYG$position == "LB",]$grade[1:1]), 
+              mean(NYG[NYG$position == "OL",]$grade[1:3]), 
+              mean(NYG[NYG$position == "P",]$grade[1:1]), 
+              mean(NYG[NYG$position == "QB",]$grade[1:1]), 
+              mean(NYG[NYG$position == "RB",]$grade[1:1]), 
+              mean(NYG[NYG$position == "WR",]$grade[1:2]))/100
+
+NYJ_data <- c(mean(NYJ[NYJ$position == "DB",]$grade[1:3]), 
+              mean(NYJ[NYJ$position == "DL",]$grade[1:3]), 
+              mean(NYJ[NYJ$position == "K",]$grade[1:1]), 
+              mean(NYJ[NYJ$position == "LB",]$grade[1:1]), 
+              mean(NYJ[NYJ$position == "OL",]$grade[1:3]), 
+              mean(NYJ[NYJ$position == "P",]$grade[1:1]), 
+              mean(NYJ[NYJ$position == "QB",]$grade[1:1]), 
+              mean(NYJ[NYJ$position == "RB",]$grade[1:1]), 
+              mean(NYJ[NYJ$position == "WR",]$grade[1:2]))/100
+
+LV_OAK_data <- c(mean(LV_OAK[LV_OAK$position == "DB",]$grade[1:3]), 
+                 mean(LV_OAK[LV_OAK$position == "DL",]$grade[1:3]), 
+                 mean(LV_OAK[LV_OAK$position == "K",]$grade[1:1]), 
+                 mean(LV_OAK[LV_OAK$position == "LB",]$grade[1:1]), 
+                 mean(LV_OAK[LV_OAK$position == "OL",]$grade[1:3]), 
+                 mean(LV_OAK[LV_OAK$position == "P",]$grade[1:1]), 
+                 mean(LV_OAK[LV_OAK$position == "QB",]$grade[1:1]), 
+                 mean(LV_OAK[LV_OAK$position == "RB",]$grade[1:1]), 
+                 mean(LV_OAK[LV_OAK$position == "WR",]$grade[1:2]))/100
+
+PHI_data <- c(mean(PHI[PHI$position == "DB",]$grade[1:3]), 
+              mean(PHI[PHI$position == "DL",]$grade[1:3]), 
+              mean(PHI[PHI$position == "K",]$grade[1:1]), 
+              mean(PHI[PHI$position == "LB",]$grade[1:1]), 
+              mean(PHI[PHI$position == "OL",]$grade[1:3]), 
+              mean(PHI[PHI$position == "P",]$grade[1:1]), 
+              mean(PHI[PHI$position == "QB",]$grade[1:1]), 
+              mean(PHI[PHI$position == "RB",]$grade[1:1]), 
+              mean(PHI[PHI$position == "WR",]$grade[1:2]))/100
+
+PIT_data <- c(mean(PIT[PIT$position == "DB",]$grade[1:3]), 
+              mean(PIT[PIT$position == "DL",]$grade[1:3]), 
+              mean(PIT[PIT$position == "K",]$grade[1:1]), 
+              mean(PIT[PIT$position == "LB",]$grade[1:1]), 
+              mean(PIT[PIT$position == "OL",]$grade[1:3]), 
+              mean(PIT[PIT$position == "P",]$grade[1:1]), 
+              mean(PIT[PIT$position == "QB",]$grade[1:1]), 
+              mean(PIT[PIT$position == "RB",]$grade[1:1]), 
+              mean(PIT[PIT$position == "WR",]$grade[1:2]))/100
+
+LA_SL_data <- c(mean(LA_SL[LA_SL$position == "DB",]$grade[1:3]), 
+                mean(LA_SL[LA_SL$position == "DL",]$grade[1:3]), 
+                mean(LA_SL[LA_SL$position == "K",]$grade[1:1]), 
+                mean(LA_SL[LA_SL$position == "LB",]$grade[1:1]), 
+                mean(LA_SL[LA_SL$position == "OL",]$grade[1:3]), 
+                mean(LA_SL[LA_SL$position == "P",]$grade[1:1]), 
+                mean(LA_SL[LA_SL$position == "QB",]$grade[1:1]), 
+                mean(LA_SL[LA_SL$position == "RB",]$grade[1:1]), 
+                mean(LA_SL[LA_SL$position == "WR",]$grade[1:2]))/100
+
+LAC_SD_data <- c(mean(LAC_SD[LAC_SD$position == "DB",]$grade[1:3]), 
+                 mean(LAC_SD[LAC_SD$position == "DL",]$grade[1:3]), 
+                 mean(LAC_SD[LAC_SD$position == "K",]$grade[1:1]), 
+                 mean(LAC_SD[LAC_SD$position == "LB",]$grade[1:1]), 
+                 mean(LAC_SD[LAC_SD$position == "OL",]$grade[1:3]), 
+                 mean(LAC_SD[LAC_SD$position == "P",]$grade[1:1]), 
+                 mean(LAC_SD[LAC_SD$position == "QB",]$grade[1:1]), 
+                 mean(LAC_SD[LAC_SD$position == "RB",]$grade[1:1]), 
+                 mean(LAC_SD[LAC_SD$position == "WR",]$grade[1:2]))/100
+
+SF_data <- c(mean(SF[SF$position == "DB",]$grade[1:3]), 
+             mean(SF[SF$position == "DL",]$grade[1:3]), 
+             mean(SF[SF$position == "K",]$grade[1:1]), 
+             mean(SF[SF$position == "LB",]$grade[1:1]), 
+             mean(SF[SF$position == "OL",]$grade[1:3]), 
+             mean(SF[SF$position == "P",]$grade[1:1]), 
+             mean(SF[SF$position == "QB",]$grade[1:1]), 
+             mean(SF[SF$position == "RB",]$grade[1:1]), 
+             mean(SF[SF$position == "WR",]$grade[1:2]))/100
+  
+SEA_data <- c(mean(SEA[SEA$position == "DB",]$grade[1:3]), 
+              mean(SEA[SEA$position == "DL",]$grade[1:3]), 
+              mean(SEA[SEA$position == "K",]$grade[1:1]), 
+              mean(SEA[SEA$position == "LB",]$grade[1:1]), 
+              mean(SEA[SEA$position == "OL",]$grade[1:3]), 
+              mean(SEA[SEA$position == "P",]$grade[1:1]), 
+              mean(SEA[SEA$position == "QB",]$grade[1:1]), 
+              mean(SEA[SEA$position == "RB",]$grade[1:1]), 
+              mean(SEA[SEA$position == "WR",]$grade[1:2]))/100
+  
+TB_data <- c(mean(TB[TB$position == "DB",]$grade[1:3]), 
+             mean(TB[TB$position == "DL",]$grade[1:3]), 
+             mean(TB[TB$position == "K",]$grade[1:1]), 
+             mean(TB[TB$position == "LB",]$grade[1:1]), 
+             mean(TB[TB$position == "OL",]$grade[1:3]), 
+             mean(TB[TB$position == "P",]$grade[1:1]), 
+             mean(TB[TB$position == "QB",]$grade[1:1]), 
+             mean(TB[TB$position == "RB",]$grade[1:1]), 
+             mean(TB[TB$position == "WR",]$grade[1:2]))/100
+  
+TEN_data <- c(mean(TEN[TEN$position == "DB",]$grade[1:3]), 
+              mean(TEN[TEN$position == "DL",]$grade[1:3]), 
+              mean(TEN[TEN$position == "K",]$grade[1:1]), 
+              mean(TEN[TEN$position == "LB",]$grade[1:1]), 
+              mean(TEN[TEN$position == "OL",]$grade[1:3]), 
+              mean(TEN[TEN$position == "P",]$grade[1:1]), 
+              mean(TEN[TEN$position == "QB",]$grade[1:1]), 
+              mean(TEN[TEN$position == "RB",]$grade[1:1]), 
+              mean(TEN[TEN$position == "WR",]$grade[1:2]))/100
+  
+WAS_data <- c(mean(WAS[WAS$position == "DB",]$grade[1:3]), 
+              mean(WAS[WAS$position == "DL",]$grade[1:3]), 
+              mean(WAS[WAS$position == "K",]$grade[1:1]), 
+              mean(WAS[WAS$position == "LB",]$grade[1:1]), 
+              mean(WAS[WAS$position == "OL",]$grade[1:3]), 
+              mean(WAS[WAS$position == "P",]$grade[1:1]), 
+              mean(WAS[WAS$position == "QB",]$grade[1:1]), 
+              mean(WAS[WAS$position == "RB",]$grade[1:1]), 
+              mean(WAS[WAS$position == "WR",]$grade[1:2]))/100
+```
+
+```{r}
+# compile results
+
+pos <- c("DB", "DL", "K", "LB", "OL", "P", "QB", "RB", "WR")
+res <- data.frame(ARZ_data, ATL_data, BLT_data, BUF_data, CAR_data, CHI_data, CIN_data, 
+                  CLV_data, DAL_data, DEN_data, DET_data, GB_data, HST_data, IND_data, 
+                  JAX_data, KC_data, MIA_data, MIN_data, NE_data, NO_data, NYG_data, 
+                  NYJ_data, LV_OAK_data, PHI_data, PIT_data, LA_SL_data, LAC_SD_data, 
+                  SF_data, SEA_data, TB_data, TEN_data, WAS_data)
+res <- data.frame(t(res))
+
+massey <- read.csv(file = paste0(direc, 
+                   "ReorderedResults.csv"), 
+                   header = TRUE, stringsAsFactors = TRUE)
+res["Massey"] <- massey[massey$Year == year,]$MasseyRating
+res["NormalizedMassey"] <- massey[massey$Year == year,]$NormalizedRating
+res["TeamID"] <- seq(1, 32, 1)
+res["Year"] <- rep(year, 32)
+colnames(res) <- c(pos, "Massey", "NormalizedMassey", "TeamID", "Year")
+
+head(res)
+#write.csv(res, paste0(direc, as.character(year), "NextYearRegress.csv"))
+```
