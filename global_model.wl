@@ -17,7 +17,7 @@
 
 
 (* ::Input:: *)
-(*data = Import["/Users/totam/Downloads/ModCombinedYearsRankingSpread.csv"];*)
+(*data = Import["../data/ModCombinedYearsRankingSpread.csv"];*)
 
 
 (* ::Text:: *)
@@ -124,7 +124,7 @@
 (*result = Join[result, rank[data, week, FALSE, FALSE, FALSE]];*)
 (*]*)
 (*]*)
-(*Export["/Users/totam/Downloads/NewMassey.csv", result];*)
+(*Export["../data/NewMassey.csv", result];*)
 
 
 (* ::Subtitle:: *)
@@ -189,7 +189,7 @@
 (*graphlaplacian = KirchhoffMatrix[directed];*)
 (*direcEdge = EdgeList[directed];*)
 (*undirecEdge = EdgeList[undirected];*)
-(*Export["/Users/totam/Downloads/nfl2012endgraph.jpg",directed, ImageResolution -> 1200];*)
+(*Export["../data/nfl2012endgraph.jpg",directed, ImageResolution -> 1200];*)
 
 
 (* ::Text:: *)
@@ -502,7 +502,7 @@
 (*];*)
 (*]*)
 (**)
-(*Export["/Users/totam/Downloads/hodgeFinal.csv", hodgeFinal];*)
+(*Export["../data/hodgeFinal.csv", hodgeFinal];*)
 
 
 (* ::Subtitle:: *)
@@ -691,7 +691,7 @@
 
 
 (* ::Input:: *)
-(*Export["/Users/totam/Downloads/hodgePredictions.csv",hodgedifference];*)
+(*Export["../data/hodgePredictions.csv",hodgedifference];*)
 
 
 (* ::Text:: *)
@@ -709,15 +709,15 @@
 
 
 (* ::Input:: *)
-(*masseytrans = Import["/Users/totam/Downloads/Returns - masseyHodgeSpreadRes.csv"];*)
+(*masseytrans = Import["../data/Returns - masseyHodgeSpreadRes.csv"];*)
 (*masseytranscum = masseytrans[[2;;Length[masseytrans],9]];*)
 (**)
 (*test2 = ListLinePlot[{original, masseytranscum}, ImageSize -> Large, PlotLabel -> "Global Model Performance Against Point Spread", PlotStyle -> {Darker[Blue], 15}, AxesLabel -> {"Game", "Profit"}, LabelStyle->Directive[Black, Bold], AxesStyle ->{{Black, Thick}, {Black, Thick}}, GridLines->{{267,534,801,1068,1335,1602,1869,2138,2423,2708,2992}}, GridLinesStyle->Directive[Black, Dashed], PlotLegends -> Placed[{"No Transaction Costs", "With Transaction Costs"}, {Center, Top}], AspectRatio->1.25]*)
-(*Export["/Users/totam/Downloads/masseybaselineprofit.jpg",test2, ImageResolution -> 1200];*)
+(*Export["../data/masseybaselineprofit.jpg",test2, ImageResolution -> 1200];*)
 
 
 (* ::Input:: *)
-(*mldata = Import["/Users/totam/Downloads/Returns - holyShitRhinoEPA.csv"];*)
+(*mldata = Import["../data/Returns - holyShitRhinoEPA.csv"];*)
 (*mldatafilter = mldata[[2;;Length[mldata],16]];*)
 (*mltransactiondatafilter = mldata[[2;;Length[mldata],17]];*)
 (*profitml = List[0];*)
@@ -730,11 +730,11 @@
 (*];*)
 (**)
 (*test3= ListLinePlot[{profitml, mltransactiondatafilter}, ImageSize -> Large, PlotLabel -> "Local Model Performance Against Point Spread", PlotStyle -> {Darker[Red], 15}, AxesLabel -> {"Game", "Profit"}, LabelStyle->Directive[Black, Bold], AxesStyle ->{{Black, Thick}, {Black, Thick}}, GridLines->{{267,534,801,1068,1353,1638,1925}}, GridLinesStyle->Directive[Black, Dashed], PlotLegends -> Placed[{"No Transaction Costs", "With Transaction Costs"}, {Center, Top}], AspectRatio->1.25]*)
-(*Export["/Users/totam/Downloads/mlprofit.jpg",test3, ImageResolution -> 1200];*)
+(*Export["../data/mlprofit.jpg",test3, ImageResolution -> 1200];*)
 
 
 (* ::Input:: *)
-(*longspreads = Import["/Users/totam/Downloads/NFL Betting - spreadsClean.csv"];*)
+(*longspreads = Import["../data/NFL Betting - spreadsClean.csv"];*)
 (*spreads = longspreads[[2;;Length[longspreads], 4]];*)
 (*years = longspreads[[2;;Length[longspreads],10]];*)
 
@@ -750,11 +750,11 @@
 
 (* ::Input:: *)
 (*spreadHist = Histogram3D[spreadyear,{Length@data,Automatic}, ColorFunction->"SolarColors",PerformanceGoal->"Speed",Ticks->{20,20,20},ChartStyle->60,ViewPoint -> {Pi,Pi/3,2}, Boxed->False,FaceGrids->{Bottom,Front,Left},ImageSize->600, AxesLabel -> {"Season", "Point Spread", "Count"}, PlotLabel -> "Histogram of Vegas Point Spreads, 2002-2023", LabelStyle -> Directive[Bold, Black]]*)
-(*Export["/Users/totam/Downloads/spreadHist.jpg",spreadHist, ImageResolution -> 1200];*)
+(*Export["../data/spreadHist.jpg",spreadHist, ImageResolution -> 1200];*)
 
 
 (* ::Input:: *)
-(*epadata= Import["/Users/totam/Downloads/QB Data - Shifted.csv"];*)
+(*epadata= Import["../data/QB Data - Shifted.csv"];*)
 (*epa = epadata[[2;;Length[epadata], 5]];*)
 (*epa = Select[epa, # != "NA"&];*)
 
@@ -763,7 +763,7 @@
 (*mu = 0.743518;*)
 (*sigma = 2.33733;*)
 (*epahist = Show[Histogram[epa,Automatic,"PDF",PlotLabel->"Histogram of Quarterback EPA", AxesLabel -> {"Expected Points Added (EPA)", "Frequency"},Frame->{True,True,False,False},FrameLabel->{"Expected Points Added (EPA)","Frequency"},ChartStyle->{Hue[0.5,0.66,0.63]},LabelStyle->{Bold, Black}],Plot[1/(sigma Sqrt[2 Pi]) Exp[-1/2 ((x-mu)/sigma)^2],{x,-7,8},PlotLegends->Placed[{"Normal Dist."}, {Right, Top}], PlotStyle->{Hue[0,0.71,0.44]},PlotLabel->"Histogram of Quarterback EPA"]]*)
-(*Export["/Users/totam/Downloads/epaHist.jpg",epahist, ImageResolution -> 1200];*)
+(*Export["../data/epaHist.jpg",epahist, ImageResolution -> 1200];*)
 
 
 (* ::Input:: *)
