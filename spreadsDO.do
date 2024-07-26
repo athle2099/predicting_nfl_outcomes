@@ -1,4 +1,4 @@
-use "C:\Users\journ\OneDrive\Desktop\ICERM\nflData\Jupyter\spreadsRAW.dta"
+use "...\spreadsRAW.dta"
 
 drop game_type gametime weekday gameday total overtime old_game_id gsis nfl_detail_id pfr pff espn ftn away_rest home_rest result
 
@@ -46,4 +46,4 @@ replace away_spread_odds = "-108" if away_spread_odds == "NA"
 destring home_spread_odds, replace
 destring away_spread_odds, replace
 
-save "C:\Users\journ\OneDrive\Desktop\ICERM\nflData\Jupyter\spreadsCLEAN.dta", replace
+save "...\spreadsCLEAN.dta", replace
