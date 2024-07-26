@@ -1,6 +1,6 @@
 * The Massey scores are calculated after each week, so are stored in "weekssofar". For predicting, the week we predict is the week after "weekssofar", hence we need to shift up by a week and shift the year for end-of-season scores.
 
-use "C:\Users\journ\OneDrive\Desktop\ICERM\nflData\Jupyter\weeklyMasseyRAW.dta"
+use "...\weeklyMasseyRAW.dta"
 
 sort year weekssofar teamid
 gen week = weekssofar + 1 // correspond with the actual week
@@ -13,4 +13,4 @@ drop weekssofar
 order year week teamid
 sort year week teamid
 
-save "C:\Users\journ\OneDrive\Desktop\ICERM\nflData\Jupyter\weeklyMasseyCLEAN.dta", replace
+save "...\weeklyMasseyCLEAN.dta", replace
