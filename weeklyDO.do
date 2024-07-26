@@ -1,6 +1,6 @@
 * This file contains all relevant code for weekly, non-predicting regressions to motivate predictions. It will start with the raw weekly dataset from fastR, clean it and PFF data, then will put all merging as part of this file by using intermediate files.
 
-use "C:\Users\journ\OneDrive\Desktop\ICERM\nflData\Jupyter\weeklyRostersRAW.dta"
+use "...\weeklyRostersRAW.dta"
 
 * we want to extract the home and away teams from "game_id"
 gen away = substr(game_id, 9, 3) // away; some are two digits:
@@ -303,12 +303,11 @@ replace player = "yannikcudjoevirgil" if player == "yannickcudjoevirgil" // spel
 order player group year
 
 tempfile weeklySnapsTemp
-/*save "C:\Users\journ\OneDrive\Desktop\ICERM\nflData\Jupyter\weeklySnapsTemp", replace */
 save `weeklySnapsTemp'
 
 * PFF CLEANING, "pffNoDups.dta" is from "yearlyDO.do"
 clear
-use "C:\Users\journ\OneDrive\Desktop\ICERM\nflData\Jupyter\pffNoDups.dta"
+use "...\pffNoDups.dta"
 rename position group
 
 * Remark) A lot of this code is redundant as the changes are the same for both datasets, but it would require appending and treating them separetly anyway, so we repeat a lot of code.
@@ -448,49 +447,41 @@ order player pff_group year
 format pff_group %8s
 format group %8s
 
-save "C:\Users\journ\OneDrive\Desktop\ICERM\nflData\Jupyter\pffNameEdit.dta", replace
+save "...\pffNameEdit.dta", replace
 
 * now we start merging and, going from the name/group changes above, merge what we can; the unmerged will be discrepencies from PFF and roster labelling of positions, here all DL/LB. PFF leans heavily towards grouping 4-3 and, nowadays, 4-2 OLBs as DL, which we agree with. Hence, for this we default to DLs, which is somewhat the reason why our models have much more listed DLs than LBs. It is a subjective decision.
 clear
-/*use "C:\Users\journ\OneDrive\Desktop\ICERM\nflData\Jupyter\weeklySnapsTemp.dta" */
 use `weeklySnapsTemp'
 
-merge m:m year player group using "C:\Users\journ\OneDrive\Desktop\ICERM\nflData\Jupyter\pffNameEdit.dta"
+merge m:m year player group using "...\pffNameEdit.dta"
 drop if _merge != 1 // keeps the from weekly that did not merge
 drop _merge
 
 tempfile temp
 save `temp', replace
-/*save "C:\Users\journ\OneDrive\Desktop\ICERM\nflData\Jupyter\Temp.dta", replace */
 * have now saved the players with DL/LB positional changes; since I want to keep the weekly "group" the same, need to create an intermediate dataset from "pffNameEdit" that does not contain group (but the variable is pff_group)
-use "C:\Users\journ\OneDrive\Desktop\ICERM\nflData\Jupyter\pffNameEdit.dta"
+use "...\pffNameEdit.dta"
 
 drop group
 tempfile pffNameEditTemp
 save `pffNameEditTemp', replace
-/* save "C:\Users\journ\OneDrive\Desktop\ICERM\nflData\Jupyter\pffNameEditTemp.dta", replace */
 
 use `temp'
-/* use "C:\Users\journ\OneDrive\Desktop\ICERM\nflData\Jupyter\Temp.dta" */
 format group %8s
 * dropping the pff variables:
 drop pff_group player_id team_name player_game_count grade franchise_id
 // do not merge by team since this includes team changes
-/*merge m:m player year using"C:\Users\journ\OneDrive\Desktop\ICERM\nflData\Jupyter\pffNameEditTemp.dta" */
 merge m:m player year using `pffNameEditTemp'
 
 drop if _merge != 3 // since names are correct, it matches all in this
 replace group = pff_group // set groups to their PFF ones
 drop pff_group
-/*save "C:\Users\journ\OneDrive\Desktop\ICERM\nflData\Jupyter\Temp.dta", replace // this is the set of players with DL/LB discrepencies */
 save `temp', replace
 
 * now have matched the unmatched positions, so load the original matches, drop the unmatched, then append with the above:
-/*use "C:\Users\journ\OneDrive\Desktop\ICERM\nflData\Jupyter\weeklySnapsTemp.dta" */
 use `weeklySnapsTemp'
-merge m:m year player group using "C:\Users\journ\OneDrive\Desktop\ICERM\nflData\weeklyPlayerCounts\pffNameEdit.dta"
+merge m:m year player group using "...\pffNameEdit.dta"
 drop if _merge != 3 // keep the original merges
-/*append using "C:\Users\journ\OneDrive\Desktop\ICERM\nflData\Jupyter\Temp.dta" */
 append using `temp'
 drop _merge
 
@@ -725,10 +716,10 @@ order year week home_id away_id game_id
 sort year week away_id
 
 * now need to merge the spreads
-merge m:m year week home_id away_id using "C:\Users\journ\OneDrive\Desktop\ICERM\nflData\Jupyter\spreadsCLEAN.dta"
+merge m:m year week home_id away_id using "...\spreadsCLEAN.dta"
 drop _merge 
 gen spread = home_score - away_score
 
-save "C:\Users\journ\OneDrive\Desktop\ICERM\nflData\Jupyter\regReadyDyn.dta", replace
+save "...\regReadyDyn.dta", replace
 
 reg spread QB_home QB_away RB_home RB_away WR_home WR_away OL_home OL_away DB_home DB_away DL_home DL_away LB_home LB_away P_home P_away K_home K_away
