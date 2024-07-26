@@ -5,8 +5,7 @@
 
 
 (* ::Input:: *)
-(*data=Import["/Users/totam/Downloads/PassRushMasseyEdited.csv"];*)
-(*data = Import["/Users/totam/Downloads/Pass Rush - MasseyPassRushAdj.csv"];*)
+(*data = Import["../data/Pass Rush - MasseyPassRushAdj.csv"];*)
 (*passrush = data[[2;;Length[data]]];*)
 
 
@@ -76,4 +75,4 @@
 (*year = Select[passrush,#[[11]]==week&][[1,1]];*)
 (*sepresult = Join[sepresult, seprank[passrush, year, week]];*)
 (*]];*)
-(*Export["/Users/totam/Downloads/PrevYearPredictDefenseMassey.csv", sepresult];*)
+(*Export["../data/PrevYearPredictDefenseMassey.csv", sepresult];*)
