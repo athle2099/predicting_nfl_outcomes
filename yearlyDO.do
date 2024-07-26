@@ -1,4 +1,5 @@
-use "C:\Users\journ\OneDrive\Desktop\ICERM\nflData\Jupyter\pffRAW.dta"
+// upload raw pff data (if possessed)
+use "...\pffRAW.dta"
 
 //tab franchise_id // irregular ids in 2020
 * puts city changes and name changes together. Washington Redskins/FT/Commanders is all "WAS"
@@ -21,7 +22,7 @@ duplicates drop player_id year franchise_id, force
 order player player_id year franchise_id position player_game_count grade
 sort year franchise_id position player_game_count grade
 
-save "C:\Users\journ\OneDrive\Desktop\ICERM\nflData\Jupyter\pffNoDups.dta", replace
+save "...\pffNoDups.dta", replace
 
 by year franchise_id position: gen position_count = _n // counts all players by year/team/position
 
@@ -111,13 +112,14 @@ gen weekssofar = .
 replace weekssofar = 21 if year < 2021
 replace weekssofar = 22 if year >= 2021
 
-merge m:m year teamid weekssofar using "C:\Users\journ\OneDrive\Desktop\ICERM\nflData\Jupyter\weeklyMasseyRAW.dta"
+// merge the massey rankings
+merge m:m year teamid weekssofar using "...\weeklyMasseyRAW.dta"
 // 7168 not merged is the weekly data; all master data merged
 drop if _merge == 2
 drop _merge // should be merged
 
 order DB DL K LB OL P QB RB WR
 **# Bookmark #1
-save "C:\Users\journ\OneDrive\Desktop\ICERM\nflData\Jupyter\yearlyRegReady.dta", replace
+save "...\yearlyRegReady.dta", replace
 
 reg normalizedmassey DL DB K LB OL P QB RB WR
