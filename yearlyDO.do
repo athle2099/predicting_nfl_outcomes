@@ -112,9 +112,18 @@ gen weekssofar = .
 replace weekssofar = 21 if year < 2021
 replace weekssofar = 22 if year >= 2021
 
+tempfile yearly
+save `yearly', replace
+
+clear
+import delimited "...weeklyMasseyRAW.csv" // import the raw version to get the un-shifted
+tempfile massey
+save `massey', replace
+clear
+
+use `yearly'
 // merge the massey rankings
-merge m:m year teamid weekssofar using "...\weeklyMasseyRAW.dta"
-// 7168 not merged is the weekly data; all master data merged
+merge m:m year teamid weekssofar using `massey'
 drop if _merge == 2
 drop _merge // should be merged
 
