@@ -1,6 +1,6 @@
 * The Massey scores are calculated after each week, so are stored in "weekssofar". For predicting, the week we predict is the week after "weekssofar", hence we need to shift up by a week and shift the year for end-of-season scores.
 
-use "...\weeklyMasseyRAW.dta"
+import delimited "...\weeklyMasseyRAW.csv"
 
 sort year weekssofar teamid
 gen week = weekssofar + 1 // correspond with the actual week
