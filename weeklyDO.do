@@ -1,6 +1,6 @@
 * This file contains all relevant code for weekly, non-predicting regressions to motivate predictions. It will start with the raw weekly dataset from fastR, clean it and PFF data, then will put all merging as part of this file by using intermediate files.
 
-use "...\weeklyRostersRAW.dta"
+import delimited "...\weeklyRostersRAW.csv"
 
 * we want to extract the home and away teams from "game_id"
 gen away = substr(game_id, 9, 3) // away; some are two digits:
