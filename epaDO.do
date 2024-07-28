@@ -1,7 +1,7 @@
 * This file graps EPA data for QBS from "player_stats_RAW". We then calculate "weightedEPA" which is the porduct of that week's EPA and the normalized (tranformed between zero and one) massey of the opposing team. A "dynamic" EPA is then created by taking the weighted sum of "weightedEPA"s before, weighted by exp(-log(.5)/21*t) where t is the number of games played since. This is divided by the sum of said weights.
 
 // appened player stats from 2013 to 2023
-import delimited  "C:\Users\journ\OneDrive\Desktop\ICERM\nflData\Jupyter\player_stats_RAW.csv"
+import delimited  "...\player_stats_RAW.csv"
 
 * Cleaning
 rename player_display_name player
@@ -29,10 +29,6 @@ forvalues i = 1/`N' {
     replace teamid = `id' if team == "`team'"
 }
 
-
-
-
-
 // sort by passing attempts then drop all but the highest
 sort year teamid week attempts
 by year teamid week: gen weekly_count = _n
@@ -48,7 +44,7 @@ replace group = "QB" if group != "QB"
 tempfile qbCLEAN
 save `qbCLEAN'
 
-use "C:\Users\journ\OneDrive\Desktop\ICERM\nflData\Jupyter\spreadsCLEAN.dta"
+use "...\spreadsCLEAN.dta"
 
 // split the games (the matchups) into each team
 levelsof year, local(years) 
@@ -67,7 +63,7 @@ replace teamid = away_id if tag == 1
 drop tagSurplus tag
 
 // get the 'normalizedmassey' for weighting
-merge 1:1 year week teamid using "C:\Users\journ\OneDrive\Desktop\ICERM\nflData\weeklyPlayerCounts\weeklyMasseyCLEAN.dta"
+merge 1:1 year week teamid using "...\weeklyMasseyCLEAN.dta"
 drop if _merge == 2
 drop _merge teamname
 * to identify the massey of the QB's team and that of the opponent, we first reshape wide to each game being a single observation, get both Massey's, then split back again to look at the QBs:
@@ -188,4 +184,4 @@ drop dynamicEPA
 rename laggedEPA dynamicepa
 drop passing_epa opp_norm_massey weighted_epa playertime playertotal
 
-save "C:\Users\journ\OneDrive\Desktop\ICERM\nflData\Jupyter\dynamicEPA.dta", replace
+save "...\dynamicEPA.dta", replace
