@@ -1,4 +1,4 @@
-use "...\spreadsRAW.dta"
+import delimited "...\spreadsRAW.csv"
 
 drop game_type gametime weekday gameday total overtime old_game_id gsis nfl_detail_id pfr pff espn ftn away_rest home_rest result
 
