@@ -5,8 +5,10 @@ import math
 from time import perf_counter
 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 
+file = '.../footballData.csv'
 alpha = .033007 # roughly log(.5)/21, the coeffficient alpha satisfying exp(-alpha*21) = .5
-df = pd.read_csv('C:/Users/journ/OneDrive/Desktop/ICERM/nflData/Jupyter/footballData.csv') # output file from "...\localDO.do"
+
+df = pd.read_csv(file) # output file from "...\localDO.do"
 
 def train_and_predict(df, start_time, end_time, side):
     if side == 1:
@@ -163,9 +165,9 @@ if __name__ == "__main__":
     results['returns'] = results['bet_spr'].cumsum()
     results['noTransCost'] = results['spr'].cumsum()
     
-    file = 'C:/Users/journ/OneDrive/Desktop/ICERM/nflData/Jupyter/localResults.csv'
+    output = '.../localResults.csv'
     
-    results.to_csv(file)
+    results.to_csv(output)
 
     endtime = perf_counter()
     print(endtime - starttime)
