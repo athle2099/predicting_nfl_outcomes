@@ -17,111 +17,23 @@ library(tidyverse)
 # seasons: 2013 - 2023
 
 spread_data <- load_schedules(c(2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023))
-write.csv(spread_data, paste0(direc, "gameSpreadInfo.csv"))
+write.csv(spread_data, paste0(direc, "spreadsRAW.csv"))
 
-#**We load snap counts to obtain weekly rosters for each NFL team from the 2013 - 2023 seasons.**
+# **We load snap counts to obtain weekly rosters for each NFL team from the 2013 - 2023 seasons.**
 # load weekly NFL rosters
 # seasons: 2013 - 2023
 
 weekly_rosters <- load_snap_counts(c(2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023))
-write.csv(weekly_rosters, paste0(direc, "weeklyRosters.csv"))
+write.csv(weekly_rosters, paste0(direc, "weeklyRostersRAW.csv"))
 
-# **We load player stats to obtain quarterbacks in playoffs and to determine their playoff win percentage from the 2016 - 2023 NFL seasons.**
-# load quarterback playoff wins/losses
-# seasons: 2016 - 2023
+participation <- load_participation(c(2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023))
+participation <- participation[, c(1, 2, 3, 4, 5, 7, 9, 13, 14, 15, 16, 17, 18, 19, 20)]
+write.csv(participation, paste0(direc, "participation_RAW.csv"))
 
-rosters <- load_player_stats(c(2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023))
+play_by_play <- load_pbp(c(2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023))
+play_by_play <- subset(play_by_play, select = !(names(play_by_play) %in% c("desc")))
 
-# filter for only the postsesason and players who play primarily quarterback
-
-rosters <- rosters[(rosters$season_type != "REG" & rosters$position == "QB"),]
-rosters <- rosters[order(rosters$season, rosters$recent_team),]
-rosters <- rosters[,c(1,3,4,7,8,9,11,14)]
-rosters <- rosters[rosters$passing_yards != 0,]
-rosters["playoff_wins"] <- 0
-rosters["playoff_losses"] <- 0
-head(rosters)
-
-# initialize quarterback historial win-loss record in playoffs in 2016
-
-rosters["playoff_wins"][rosters["player_display_name"] == "Matt Ryan" & rosters["season"] == 2016] <- 1
-rosters["playoff_losses"][rosters["player_display_name"] == "Matt Ryan" & rosters["season"] == 2016] <- 4
-
-rosters["playoff_wins"][rosters["player_display_name"] == "Dak Prescott" & rosters["season"] == 2016] <- 0
-rosters["playoff_losses"][rosters["player_display_name"] == "Dak Prescott" & rosters["season"] == 2016] <- 0
-
-rosters["playoff_wins"][rosters["player_display_name"] == "Matthew Stafford" & rosters["season"] == 2016] <- 0
-rosters["playoff_losses"][rosters["player_display_name"] == "Matthew Stafford" & rosters["season"] == 2016] <- 2
-
-rosters["playoff_wins"][rosters["player_display_name"] == "Aaron Rodgers" & rosters["season"] == 2016] <- 7
-rosters["playoff_losses"][rosters["player_display_name"] == "Aaron Rodgers" & rosters["season"] == 2016] <- 6
-
-rosters["playoff_wins"][rosters["player_display_name"] == "Brock Osweiler" & rosters["season"] == 2016] <- 0
-rosters["playoff_losses"][rosters["player_display_name"] == "Brock Osweiler" & rosters["season"] == 2016] <- 0
-
-rosters["playoff_wins"][rosters["player_display_name"] == "Alex Smith" & rosters["season"] == 2016] <- 2
-rosters["playoff_losses"][rosters["player_display_name"] == "Alex Smith" & rosters["season"] == 2016] <- 3
-
-rosters["playoff_wins"][rosters["player_display_name"] == "Connor Cook" & rosters["season"] == 2016] <- 0
-rosters["playoff_losses"][rosters["player_display_name"] == "Connor Cook" & rosters["season"] == 2016] <- 0
-
-rosters["playoff_wins"][rosters["player_display_name"] == "Matt Moore" & rosters["season"] == 2016] <- 0
-rosters["playoff_losses"][rosters["player_display_name"] == "Matt Moore" & rosters["season"] == 2016] <- 2
-
-rosters["playoff_wins"][rosters["player_display_name"] == "Tom Brady" & rosters["season"] == 2016] <- 22
-rosters["playoff_losses"][rosters["player_display_name"] == "Tom Brady" & rosters["season"] == 2016] <- 9
-
-rosters["playoff_wins"][rosters["player_display_name"] == "Eli Manning" & rosters["season"] == 2016] <- 8
-rosters["playoff_losses"][rosters["player_display_name"] == "Eli Manning" & rosters["season"] == 2016] <- 4
-
-rosters["playoff_wins"][rosters["player_display_name"] == "Ben Roethlisberger" & rosters["season"] == 2016] <- 11
-rosters["playoff_losses"][rosters["player_display_name"] == "Ben Roethlisberger" & rosters["season"] == 2016] <- 6
-
-rosters["playoff_wins"][rosters["player_display_name"] == "Russell Wilson" & rosters["season"] == 2016] <- 7
-rosters["playoff_losses"][rosters["player_display_name"] == "Russell Wilson" & rosters["season"] == 2016] <- 3
-
-# identify which quarterbacks won the Super Bowl in a given season
-
-rosters["lost_bowl"] <- TRUE
-rosters["lost_bowl"][rosters["season"] == 2016 & rosters$player_display_name == "Tom Brady"] <- FALSE
-rosters["lost_bowl"][rosters["season"] == 2017 & rosters$player_display_name == "Nick Foles"] <- FALSE
-rosters["lost_bowl"][rosters["season"] == 2018 & rosters$player_display_name == "Tom Brady"] <- FALSE
-rosters["lost_bowl"][rosters["season"] == 2019 & rosters$player_display_name == "Patrick Mahomes"] <- FALSE
-rosters["lost_bowl"][rosters["season"] == 2020 & rosters$player_display_name == "Tom Brady"] <- FALSE
-rosters["lost_bowl"][rosters["season"] == 2021 & rosters$player_display_name == "Matthew Stafford"] <- FALSE
-rosters["lost_bowl"][rosters["season"] == 2022 & rosters$player_display_name == "Patrick Mahomes"] <- FALSE
-rosters["lost_bowl"][rosters["season"] == 2023 & rosters$player_display_name == "Patrick Mahomes"] <- FALSE
-
-# iterate through quarterback data to update wins and losses over the years
-
-final.roster <- rosters[rosters$player_display_name == "",]
-for(it in rosters$player_display_name) {
-  subset <- rosters[rosters$player_display_name == it,]
-  if(length(subset$player_id) > 1) {
-    for(num in 2:length(subset$player_id)) {
-      if(subset[num - 1, 5] < subset[num, 5] && subset[num - 1, 11] == TRUE) {
-        subset[num, 9] <- subset[num - 1, 9]
-        subset[num, 10] <- subset[num - 1, 10] + 1
-      }
-      else if(subset[num - 1, 5] < subset[num, 5] && subset[num - 1, 11] == FALSE) {
-        subset[num, 9] <- subset[num - 1, 9] + 1
-        subset[num, 10] <- subset[num - 1, 10]
-      }
-      else {
-        subset[num, 9] <- subset[num - 1, 9] + 1
-        subset[num, 10] <- subset[num - 1, 10]
-      }
-    }
-  }
-  
-  df_list <- list(final.roster, subset)
-  
-  final.roster <- df_list %>% reduce(full_join, by = c("player_id", "player_display_name", "position", "recent_team", "season", "week", "opponent_team", "passing_yards", "playoff_wins", "playoff_losses", "lost_bowl"))
-  
-}
-
-head(final.roster)
-write.csv(final.roster, paste0(direc, "playoff_qbs.csv"))
+write.csv(play_by_play, paste0(direc, "play_by_play_RAW.csv"))
 
 # **We load play-by-play data to classify offensive plays as run or pass plays. We also wish to identify sacks.**
 
@@ -306,4 +218,9 @@ for(it in unique(cleaned$game_id)) {
 
 result <- result[result$team != "team",]
 result
-write.csv(result, paste0(direc, "PlayByPlayOffensePlays.csv"))
+write.csv(result, paste0(direc, "rush_pass_sack.csv"))
+
+# **We load quarterback EPA, as calculated by nflverse.**
+
+epa <- load_player_stats(c(2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023))
+write.csv(epa, paste0(direc, "player_stats_RAW.csv"))
