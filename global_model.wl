@@ -37,6 +37,8 @@
 (*	diff_: Boolean to return  the weighted point differentials (TRUE for point differentials, FALSE otherwise)*)
 (*Returns array of rankings*)
 
+(* ::Text:: *)
+(*To obtain modified Massey ratings used in local model (rescaling to 14 points, etc.), one can directly change the function easily.*)
 
 (* ::Input:: *)
 (*rank[data_, week_, grad_, resid_, diff_] := *)
