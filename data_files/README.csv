@@ -1,0 +1,9 @@
+TeamDictionary: record for team names and corresponding numerical ID
+PFFMergedRankings (R): PFF grades (removed since data is proprietary) for players in a given year (2013 - present). Used for predicting player grades for next season
+YearlyMasseyRanks (R): Massey rankings given at the end of each NFL season. Used for regression purposes (as a sanity check for PFF rankings). Note that we do not scale the ratings so the difference between the max and min ratings is 10 points
+"ModCombinedYearsRankingSpread (Mathematica, Python): week-to-week game results from 2012 - 2023, for ""global"" model construction and testing, with Hodge-corrected Massey spread. Used for combined model in XGBoost"
+hodgeRank (Mathematica): recorded Helmholtz decomposition of week-to-week rankings
+weeklyMasseyRAW (Mathematica): modified Massey ratings per week
+"PredictedRosters (R, Stata): Predicted rosters coming into week 1 of NFL season, with PFF grade (taken out for proprietary reasons)."
+"passRushRhino (Stata, Mathematica): Pass rush rhino scores for each game (for applying Massey's method)"
+"RhinoMassey (Mathematica): Massey ratings for passrush, generated from passRushRhino"
