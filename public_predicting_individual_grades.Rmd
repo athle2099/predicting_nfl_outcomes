@@ -837,6 +837,7 @@ data_players <- df_list %>% reduce(full_join, by = c("season", "team", "position
                                                      "week", "game_type", "rookie_year", "team_number", "grade"))
 
 head(data_players)
+write.csv(data_players, paste0(direc, year, "predictedRosters.csv"))
 ```
 
 ```{r}
