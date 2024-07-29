@@ -7,3 +7,4 @@ weeklyMasseyRAW (Mathematica): modified Massey ratings per week
 "PredictedRosters (R, Stata): Predicted rosters coming into week 1 of NFL season, with PFF grade (taken out for proprietary reasons)."
 "passRushRhino (Stata, Mathematica): Pass rush rhino scores for each game (for applying Massey's method)"
 "RhinoMassey (Mathematica): Massey ratings for passrush, generated from passRushRhino"
+"OffenseMassey (Mathematica): Massey ratings for offense, generated from game scores"
