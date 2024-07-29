@@ -53,12 +53,12 @@ residual.graph <- ggplot() + geom_point(aes(x = newres.fitted, y = newres.resids
   scale_x_continuous(breaks = scales::pretty_breaks(n = 15))
 residual.graph
 
-newres.standRes <- rstandard(newres)
+newres.standRes <- rstandard(res)
 qqnorm(newres.standRes, main= "Normal Probability Plot", ylab = "Standardized Residuals", xlab = "Normal Scores", 
        col="red", pch=20, lwd = 3)
 qqline(newres.standRes)
 
-qqnorm <- ggplot(newres, aes(sample = rstandard(newres))) + geom_qq(color = "red") + stat_qq_line() + 
+qqnorm <- ggplot(res, aes(sample = rstandard(res))) + geom_qq(color = "red") + stat_qq_line() + 
   labs(title = "Normal Probability Plot", x = "Normal Scores", y = "Standardized Residuals") + 
   theme(family="TT Arial") + theme_bw(base_size = 7) + theme(legend.position = "none") + 
   theme(text=element_text(size=12), axis.text=element_text(size=12), axis.title=element_text(size=12), plot.title=element_text(size=12)) + 
@@ -68,7 +68,7 @@ qqnorm
 
 res <- grid.arrange(residual.graph, qqnorm)
 
-png("/Users/totam/Downloads/linregression.png", res = 1200, width = 10000, height = 10000)
+png(paste0(direc, "linregression.jpg"), res = 1200, width = 10000, height = 10000)
 plot(res)
 dev.off
 
