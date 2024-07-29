@@ -5,7 +5,7 @@
 
 
 (* ::Input:: *)
-(*data = Import["/Users/totam/Downloads/ModCombinedYearsRankingSpread.csv"];*)
+(*data = Import["../data/ModCombinedYearsRankingSpread.csv"];*)
 
 
 (* ::Text:: *)
@@ -75,4 +75,4 @@
 (*sepresult = Join[sepresult, seprank[data, year, week]];*)
 (*Print[week];*)
 (*]];*)
-(*Export["/Users/totam/Downloads/PrevYearPredictOffenseMassey.csv", sepresult];*)
+(*Export["../data/offDefMassey.csv", sepresult];*)
