@@ -1,17 +1,5 @@
----
-title: "Predicting NFL Position Grades (public version)"
-date: "`r format(Sys.time(), '%B %d, %Y')`"
-output:
-  html_document:
-    df_print: paged
-  html_notebook: default
-  pdf_document: default
-  word_document: default
----
+# **NOTE: This code will not properly compile, as the necessary PFF grades have been taken out (since PFF grading data is proprietary and requires a subscription).**
 
-**NOTE: This code will not properly compile, as the necessary PFF grades have been taken out (since PFF grading data is proprietary and requires a subscription).**
-
-```{r}
 # clear environment
 
 rm(list = ls())
@@ -19,18 +7,14 @@ rm(list = ls())
 # set directory for file imports
 
 direc <- "../data/"
-```
 
-```{r message = FALSE}
 # libraries used
 
 library(tidyverse)
 library(nflverse)
 library(data.table)
 library(RecordLinkage)
-```
 
-```{r}
 # year to be predicted; for example, if year = 2018, we use PFF grades from 2016 and 2017 to predict grades for 2018
 # year >= 2015, since PFF grades are only complete starting from 2013
 
@@ -54,9 +38,7 @@ non_injured_data <- data_prev_year[data_prev_year$player_game_count >= 11,]
 data_prev_prev_year <- read.csv(paste0(direc, "PFFMergedRankings.csv"))
 data_prev_prev_year <- data_prev_prev_year[data_prev_prev_year$year == year - 2,]
 data_prev_prev_year <- data_prev_prev_year[!(duplicated(data_prev_prev_year$player_id) & duplicated(data_prev_prev_year$year)),]
-```
 
-```{r}
 # assign grades to players who did not play more than 11 games the previous season (they were not "fully healthy")
 
 actual_grade <- 0
@@ -88,9 +70,7 @@ for(it in injured_data$player_id) {
   }
   injured_data[injured_data$player_id == it,]$grade <- actual_grade
 }
-```
 
-```{r}
 # identify players who played in the NFL two years before but did not play the previous season (either due to injury or contract situations)
 
 unincluded <- data.frame(c("test"), c(-10), c("test"), c("test"), c(-10), c(-10), c(-10), c(-10))
@@ -117,9 +97,7 @@ list <- list(injured_data, non_injured_data, unincluded)
 corrected_data_prev_year <- list %>% reduce(full_join, by = c("player", "player_id", "position", "team_name", "player_game_count", "grade", "franchise_id", "year"))
 corrected_data_prev_year <- corrected_data_prev_year[order(corrected_data_prev_year$team_name, corrected_data_prev_year$position, 
                                                            -corrected_data_prev_year$grade, -corrected_data_prev_year$player_game_count),]
-```
 
-```{r}
 # string modifications
 # remove designations after the players' last name to remove inconsistent player cases between PFF and nflverse data
 
@@ -139,9 +117,7 @@ for(it in corrected_data_prev_year$player_id) {
   s <- corrected_data_prev_year[corrected_data_prev_year$player_id == it,][1,1]
   corrected_data_prev_year["player"][corrected_data_prev_year["player_id"] == it] <- unlist(strsplit(s, split = ' IV', fixed = TRUE))[1]
 }
-```
 
-```{r}
 # use nflverse (nflfastR, nflreadR) to load weekly roster data
 
 data_players <- load_rosters_weekly(year)
@@ -182,9 +158,7 @@ data_players["team_number"][data_players["team"] == "SEA"] <- 29
 data_players["team_number"][data_players["team"] == "TB"] <- 30
 data_players["team_number"][data_players["team"] == "TEN"] <- 31
 data_players["team_number"][data_players["team"] == "WAS"] <- 32
-```
 
-```{r}
 # classify players in general positional groups
 # remove players listed as fullbacks (FB), long snappers (LS), punt returner (PR) and NA
 # classify tackle (T), center (C), and guard (G) as offensive line (OL)
@@ -201,9 +175,7 @@ data_players["position"][data_players["position"] == "TE"] <- "WR"
 data_players["position"][data_players["position"] == "OLB" | data_players["position"] == "ILB" | data_players["position"] == "MLB"] <- "LB"
 
 data_players <- data_players[order(data_players$team_number, data_players$status, data_players$week),]
-```
 
-```{r}
 # obtain NFL rookies for upcoming year
 # remove duplicates and NA values
 
@@ -222,9 +194,7 @@ data_players <- data.frame(data_players[, c(1, 2, 3, 6, 7, 8, 9, 14, 19, 23, 26,
 data_players <- data_players[!is.na(data_players$season),]
 
 head(data_players)
-```
 
-```{r}
 # recall the NFL draft has 7 rounds
 # assign draft picks to rookies
 
@@ -372,9 +342,7 @@ if(year == 2023) {
 }
 
 head(rookies)
-```
 
-```{r}
 # a simple linear regression on average PFF grades per position by draft round indicates a significant linear relationship (p-value << 0.05)
 # we use the generated linear coefficients to predict rookies' grades by position and round they are drafted
 # note that punter and kicker are not in data frame, as they exhibit no linearity across draft rounds
@@ -388,9 +356,7 @@ qb_reg <- c(54, 50, 46, 42, 38, 34, 30, 26)
 lb_reg <- c(63, 60, 57, 54, 51, 48, 45, 42)
 rookie_grades <- data.frame(c(1, 2, 3, 4, 5, 6, 7, 8), ol_reg, db_reg, wr_reg, dl_reg, rb_reg, qb_reg, lb_reg)
 colnames(rookie_grades) <- c("Round", "OL", "DB", "WR", "DL", "RB", "QB", "LB")
-```
 
-```{r}
 # to predict rookie kickers, we take the 20th percentile of NFL kicker PFF grades from the previous season
 # similarly, for punters, we take the 20th percentile of NFL punter PFF grades from the previous season
 
@@ -409,9 +375,7 @@ for(it in rookies$gsis_id) {
 }
 
 head(rookies)
-```
 
-```{r}
 # using the weekly roster data from nflverse, assign grades from our PFF grade data frame
 # issue: names are not standardized between PFF and nflverse, no common player ID as well
 # partial solution: use string checker (given by the function levenshteinSim)
@@ -469,9 +433,7 @@ for(it in data_players$gsis_id) {
   second_names <- c(second_names, best_name_second)
   grade <- c(grade, max)
 }
-```
 
-```{r}
 # filter players with no grade assignment
 
 data_players <- data_players[data_players$grade != -10,]
@@ -560,9 +522,7 @@ head(name_testing)
 for(it in name_testing$first_names) {
   data_players <- data_players[data_players$full_name != it,]
 }
-```
 
-```{r}
 # string checker has some inaccuracies, particularly for players with duplicate names
 # manually change grades for player duplicates
 # we take the actual grade changes out; grade changes here are set to zero.
@@ -824,9 +784,7 @@ if(year == 2015) {
   data_players["grade"][data_players["full_name"] == "Alex Smith" & data_players["team"] == "KC"] <- 0
   data_players["grade"][data_players["full_name"] == "Alex Smith"& data_players["team"] == "WAS"] <- 0
 }
-```
 
-```{r}
 # merge general PFF grades and predicted rookie grades
 
 data_players <- data_players[data_players$grade != -10,]
@@ -838,9 +796,7 @@ data_players <- df_list %>% reduce(full_join, by = c("season", "team", "position
 
 head(data_players)
 write.csv(data_players, paste0(direc, year, "predictedRosters.csv"))
-```
 
-```{r}
 # split PFF grades into separate team rosters
 
 data_players <- data_players[order(data_players$team_number, data_players$position, -data_players$grade),]
@@ -876,9 +832,7 @@ SEA <- data_players[data_players$team_number == 29,]
 TB <- data_players[data_players$team_number == 30,]
 TEN <- data_players[data_players$team_number == 31,]
 WAS <- data_players[data_players$team_number == 32,]
-```
 
-```{r}
 # calculate average positional grades per team
 # number of defensive backs: 3
 # number of defensive linemen: 3
@@ -1209,9 +1163,7 @@ WAS_data <- c(mean(WAS[WAS$position == "DB",]$grade[1:3]),
               mean(WAS[WAS$position == "QB",]$grade[1:1]), 
               mean(WAS[WAS$position == "RB",]$grade[1:1]), 
               mean(WAS[WAS$position == "WR",]$grade[1:2]))/100
-```
 
-```{r}
 # compile results
 
 pos <- c("DB", "DL", "K", "LB", "OL", "P", "QB", "RB", "WR")
@@ -1233,4 +1185,3 @@ colnames(res) <- c(pos, "Massey", "NormalizedMassey", "TeamID", "Year")
 
 head(res)
 #write.csv(res, paste0(direc, as.character(year), "NextYearRegress.csv"))
-```
