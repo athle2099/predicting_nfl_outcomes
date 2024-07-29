@@ -6,7 +6,7 @@ This repository contains code from the paper *Local and global approaches for pr
 
 We use play-by-play and weekly roster data from `nflverse` in R. See the [user guide](https://nflverse.nflverse.com/) for more info on the scraping functions.
 
-We also use player grades from **Pro Football Focus** (PFF). *PFF grades are proprietary and require a subscription*. As a result, some of the code on this repository will not run, as the input data is not available. See PFF's [tutorial](https://www.pff.com/grades) for more info on grades.
+We also use player grades from Pro Football Focus (PFF). *PFF grades are proprietary and require a subscription*. As a result, **much of the code on this repository will not run**, as the input data is not publicly available. See PFF's [tutorial](https://www.pff.com/grades) for more info on grades.
 
 See the [data_files](data_files) folder for our relevant input/output data.
 
