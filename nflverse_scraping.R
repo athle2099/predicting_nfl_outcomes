@@ -17,7 +17,11 @@ library(tidyverse)
 # seasons: 2013 - 2023
 
 spread_data <- load_schedules(c(2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023))
-write.csv(spread_data, paste0(direc, "spreadsRAW.csv"))
+spread_subset <- spread_data[, c('game_id','season','game_type','week','away_team','away_score','home_team',
+                                 'home_score','result','location',	'total','overtime','old_game_id','gsis','nfl_detail_id',
+                                 'pfr','pff','espn','ftn','away_rest','home_rest','away_moneyline','home_moneyline','spread_line',
+                                 'away_spread_odds','home_spread_odds','total_line','under_odds')]
+write.csv(spread_subset, paste0(direc, "spreadsRAW.csv"))
 
 # **We load snap counts to obtain weekly rosters for each NFL team from the 2013 - 2023 seasons.**
 # load weekly NFL rosters
