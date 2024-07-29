@@ -8,6 +8,8 @@ We use play-by-play and weekly roster data from `nflverse` in R. See the [user g
 
 We also use player grades from **Pro Football Focus** (PFF). *PFF grades are proprietary and require a subscription*. As a result, some of the code on this repository will not run, as the input data is not available. See PFF's [tutorial](https://www.pff.com/grades) for more info on grades.
 
+See the [data_files](data_files) folder for our relevant input/output data.
+
 ## Local and Global Models
 
 We include code and data files to reproduce the local and global models discussed in our paper. We provide a description of each code file below.
