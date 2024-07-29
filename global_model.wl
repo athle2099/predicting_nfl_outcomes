@@ -39,6 +39,7 @@
 
 (* ::Text:: *)
 (*To obtain modified Massey ratings used in local model (rescaling to 14 points, etc.), one can directly change the function easily.*)
+(*Remember to change export file name, depending on use for the local model.*)
 
 (* ::Input:: *)
 (*rank[data_, week_, grad_, resid_, diff_] := *)
