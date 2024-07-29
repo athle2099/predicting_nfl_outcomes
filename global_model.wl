@@ -124,7 +124,7 @@
 (*result = Join[result, rank[data, week, FALSE, FALSE, FALSE]];*)
 (*]*)
 (*]*)
-(*Export["../data/NewMassey.csv", result];*)
+(*Export["../data/weeklyMasseyRAW.csv", result];*)
 
 
 (* ::Subtitle:: *)
@@ -691,7 +691,7 @@
 
 
 (* ::Input:: *)
-(*Export["../data/hodgePredictions.csv",hodgedifference];*)
+(*Export["../data/Global_RAW.csv",hodgedifference];*)
 
 
 (* ::Text:: *)
