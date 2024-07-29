@@ -6,12 +6,12 @@ import matplotlib.pyplot as plt
 combined = 0 # 0 is just local
 weeks = 0 # 0 for all; 1 if we just want the first three week; # 2 if we want weeks 4-15; 3 for 15-end
 
-local = 'C:/Users/journ/OneDrive/Desktop/ICERM/nflData/Jupyter/localResults.csv'
+local = '.../localResults.csv'
 results = pd.read_csv(local)
 
 if combined == 1:
     # we take the subset on which the two models predict the same direction from the 'spread_line'
-    hodge = 'C:/Users/journ/OneDrive/Desktop/ICERM/nflData/Jupyter/Global_CLEAN.csv'
+    hodge = '.../Global_CLEAN.csv'
     dfGlobal = pd.read_csv(hodge)
     dfLocal = results[['time', 'year', 'week', 'home_id', 'away_id', 'spread', 'spread_line', 'home_spread_odds', 'away_spread_odds', 'predicted']]
     
