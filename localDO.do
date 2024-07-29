@@ -1,7 +1,7 @@
 * This file is to merge all relevant data for the local model to export to a .csv file for the boosting method. It combines predicted rosters, the weekly masseys, rhinos, and quarterback epas, all on top of the game matchups and the game information stored in "spreadsCLEAN".
 
 * We first need to transform the predicted rosters per the paper.
-import delimited "C:\Users\journ\OneDrive\Desktop\ICERM\nflData\Jupyter\predictedRosters.csv"
+import delimited "...\predictedRosters.csv"
 
 rename team_number teamid
 rename season year
@@ -57,7 +57,7 @@ save `predictGroups', replace
 
 * We now need to shift the weeks of the transformed rhino data, now the Massey solutions for each offense/defense (ive lines) from the Mathematica file.
 clear
-import delimited using "C:\Users\journ\OneDrive\Desktop\ICERM\nflData\Jupyter\rhinoMassey.csv"
+import delimited using "...\rhinoMassey.csv"
 sort year weeksofar id
 gen week = weeksofar + 1
 replace week = 1 if week == 22 & year < 2021
@@ -94,7 +94,7 @@ save `rhinoMassey', replace
 
 * Now we need to load-in the games played to merge to them.
 clear 
-use "C:\Users\journ\OneDrive\Desktop\ICERM\nflData\Jupyter\spreadsCLEAN.dta"
+use "...\spreadsCLEAN.dta"
 drop home_moneyline away_moneyline location total_line under_odds over_odds // not needed
 levelsof year, local(years) 
 foreach y of local years {
@@ -111,7 +111,7 @@ replace teamid = home_id if tag == 0
 replace teamid = away_id if tag == 1
 drop tagSurplus tag
 
-merge m:m year week teamid using "C:\Users\journ\OneDrive\Desktop\ICERM\nflData\Jupyter\weeklyMasseyCLEAN.dta"
+merge m:m year week teamid using "...\weeklyMasseyCLEAN.dta"
 drop if _merge == 2 // bye weeks and playoffs
 drop _merge
 drop normalizedmassey teamname
@@ -126,7 +126,7 @@ drop if _merge == 1 // 2016 week 1
 drop if _merge == 2 // bye weeks and playoffs
 drop _merge
 
-merge 1:1 year week teamid using"C:\Users\journ\OneDrive\Desktop\ICERM\nflData\Jupyter\dynamicEPA.dta"
+merge 1:1 year week teamid using"...\dynamicEPA.dta"
 // _merge == 2 comes from 2013-14
 drop if _merge == 2
 drop _merge
@@ -169,5 +169,5 @@ gen away_rhino = def_rhino_away - off_rhino_home
 order year week home_id away_id
 sort year week home_id away_id
 
-export delimited using "C:\Users\journ\OneDrive\Desktop\ICERM\nflData\Jupyter\footballData.csv", replace
+export delimited using "...\footballData.csv", replace
 // this is what the .py file will read
