@@ -1231,5 +1231,5 @@ res["Year"] <- rep(year, 32)
 colnames(res) <- c(pos, "Massey", "NormalizedMassey", "TeamID", "Year")
 
 head(res)
-#write.csv(res, paste0(direc, as.character(year), "weeklyRostersRAW.csv"))
+#write.csv(res, paste0(direc, as.character(year), "NextYearRegress.csv"))
 ```
