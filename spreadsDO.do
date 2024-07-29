@@ -1,6 +1,6 @@
 * Import the spread data and give ids and clean.
 
-import delimited "C:\Users\journ\OneDrive\Desktop\ICERM\nflData\Jupyter\spreadsRAW.csv"
+import delimited "...spreadsRAW.csv"
 
 drop game_type total overtime old_game_id gsis nfl_detail_id pfr pff espn ftn away_rest home_rest result
 
@@ -55,4 +55,4 @@ sort year week
 egen time = group(year week)
 replace time = time - 63
 
-save "C:\Users\journ\OneDrive\Desktop\ICERM\nflData\Jupyter\spreadsCLEAN.dta", replace
+save "...spreadsCLEAN.dta", replace
