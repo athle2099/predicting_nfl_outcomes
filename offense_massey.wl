@@ -5,7 +5,7 @@
 
 
 (* ::Input:: *)
-(*data = Import["../data/ModCombinedYearsRankingSpread.csv"];*)
+(*data = Import["../data/off_def_adj.csv"];*)
 
 
 (* ::Text:: *)
