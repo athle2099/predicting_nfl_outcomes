@@ -34,10 +34,13 @@ participation <- load_participation(c(2016, 2017, 2018, 2019, 2020, 2021, 2022, 
 participation <- participation[, c(1, 2, 3, 4, 5, 7, 9, 13, 14, 15, 16, 17, 18, 19, 20)]
 write.csv(participation, paste0(direc, "participation_RAW.csv"))
 
-play_by_play <- load_pbp(c(2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023))
+play_by_play <- load_pbp(c(2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023))
 play_by_play <- subset(play_by_play, select = !(names(play_by_play) %in% c("desc")))
-
-write.csv(play_by_play, paste0(direc, "play_by_play_RAW.csv"))
+play_by_play <- play_by_play %>%
+    filter(!is.na(yardline_100))
+play_by_play <- play_by_play %>%
+    mutate(across(where(is.character), ~ replace_na(., "")))
+write.csv(play_by_play, paste0(direc, "play_by_play_RAW.csv"), row.names = FALSE, fileEncoding = "UTF-8", na = "")
 
 # **We load play-by-play data to classify offensive plays as run or pass plays. We also wish to identify sacks.**
 
