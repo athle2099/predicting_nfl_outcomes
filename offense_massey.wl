@@ -75,4 +75,6 @@
 (*sepresult = Join[sepresult, seprank[data, year, week]];*)
 (*Print[week];*)
 (*]];*)
+(*headers = {"year", "weekssofar", "ID", "name", "massey", "normalizedmassey"};*)
+(*sepresultWithHeaders = Prepend[sepresult, headers];*)
 (*Export["../data/offDefMassey.csv", sepresult];*)
