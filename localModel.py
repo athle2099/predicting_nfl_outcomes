@@ -38,7 +38,7 @@ def train_and_predict(df, start_time, end_time, side):
     df.loc[df['year'] < 2021, 'cos_week'] = np.cos(2*np.pi*df.loc[df['year'] < 2021, 'week']/84)
     df.loc[df['year'] > 2020, 'sin_week'] = np.sin(2*np.pi*df.loc[df['year'] > 2020, 'week']/88)
     df.loc[df['year'] > 2020, 'cos_week'] = np.cos(2*np.pi*df.loc[df['year'] > 2020, 'week']/88)
-    # expect these to become less important over the season as their information gets older
+
     df['qb_home'] = df['cos_week']*df['qb_home']
     df['qb_away'] = df['cos_week']*df['qb_away']
     df['rb_home'] = df['cos_week']*df['rb_home']
@@ -54,6 +54,11 @@ def train_and_predict(df, start_time, end_time, side):
     df['lb_home'] = df['cos_week']*df['lb_home']
     df['lb_away'] = df['cos_week']*df['lb_away']
 
+    df['masseyhome'] = df['sin_week']*df['masseyhome']
+    df['masseyaway'] = df['sin_week']*df['masseyaway']
+    df['massey_home'] = df['sin_week']*df['massey_home']
+    df['massey_away'] = df['sin_week']*df['massey_away']
+
     for t in range(start_time, end_time + 1):
 
         for x in range(1, t + 1):
@@ -64,28 +69,28 @@ def train_and_predict(df, start_time, end_time, side):
         predict_data = df[df['time'] == t]
 
         if side == 1: # home is on offense
-            dropping = [dependent, 'year','time','week','home_score','away_score','away_line', 'spread','spread_line','home_spread_odds','away_spread_odds','game_id','home_id','away_id','home','away','off_rhino_away',
-                'off_rhino_home','def_rhino_home','def_rhino_away','db_home','dl_home','lb_home','p_home','qb_away','rb_away','ol_away','wr_away','k_away','time_diff', 'weights', 'outlier','home_rhino','dynamicepa_away',
-                'masseyaway'] 
+            dropping = [dependent, 'year','time','week','home_score','away_score','away_line', 'spread','spread_line','home_spread_odds','away_spread_odds','game_id','home_id','away_id','home','away','db_home','dl_home',
+                'lb_home','p_home','qb_away','rb_away','ol_away','wr_away','k_away','time_diff', 'weights', 'outlier','dynamicepa_away', 'masseyaway', 'massey_away', 'home_line', 'whale_away','whale_home', 'rhino_home', 
+                'husky_away', 'badger_away', 'badger_home'] 
             X_train = train_data.drop(columns=dropping)
             #print(X_train)
             X_predict = predict_data.drop(columns=dropping)
-            mon_constraints = {'home_line':1,'qb_home':1, 'wr_home':1,'rb_home':1,'ol_home':1,'dl_away':-1,'db_away':-1,'lb_away':-1,'away_rhino':-1,'k_home':1,'p_away':-1,'dynamicepa_home':1,'masseyhome':1}
+            mon_constraints = {'qb_home':1, 'wr_home':1,'rb_home':1,'ol_home':1,'dl_away':-1,'db_away':-1,'lb_away':-1, 'k_home':1, 'p_away':-1, 'dynamicepa_home':1, 'masseyhome':1, 'massey_home':1, 'rhino_away':-1, 'husky_home':1}
 
         elif side == 2: # away is on offense
-            dropping = [dependent, 'year','week','time','home_score','away_score','home_line','spread','spread_line','home_spread_odds','away_spread_odds','game_id','home_id','away_id','home','away','off_rhino_away',
-                'off_rhino_home','def_rhino_home','def_rhino_away','db_away','dl_away','lb_away','p_away','qb_home','rb_home','ol_home','wr_home','k_home','time_diff', 'weights', 
-                'outlier','away_rhino','dynamicepa_home','masseyhome'] #'k_away','p_home'
+            dropping = [dependent, 'year','week','time','home_score','away_score','home_line','spread','spread_line','home_spread_odds','away_spread_odds','game_id','home_id','away_id','home','away','db_away','dl_away',
+                'lb_away','p_away','qb_home','rb_home','ol_home','wr_home','k_home','time_diff', 'weights', 'outlier','dynamicepa_home','masseyhome','massey_home','away_line', 'whale_home','whale_away', 'rhino_away', 
+                'husky_home', 'badger_home', 'badger_away']
             X_train = train_data.drop(columns=dropping)
             X_predict = predict_data.drop(columns=dropping)
-            mon_constraints = {'away_line':1,'qb_away':1,'wr_away':1,'rb_away':1,'ol_away':1,'k_away':1,'dl_home':-1,'db_home':-1,'lb_home':-1,'p_home':-1,'home_rhino':-1,'dynamicepa_away':1,'masseyaway':1}
+            mon_constraints = {'qb_away':1,'wr_away':1,'rb_away':1,'ol_away':1,'k_away':1,'dl_home':-1,'db_home':-1,'lb_home':-1,'p_home':-1, 'dynamicepa_away':1, 'masseyaway':1, 'massey_away':1, 'rhino_home':-1, 'husky_away':1}
 
         y_train = train_data[dependent]
 
         sample_weights = train_data['weights']
         dtrain = xgb.DMatrix(X_train, label=y_train, weight = sample_weights)
 
-        params = {'objective': 'reg:squarederror', 'max_depth': 8,'eta': 0.1, 'verbosity': 1, 'monotone_constraints': mon_constraints}
+        params = {'objective':'reg:squarederror','max_depth': 8,'eta': 0.1, 'verbosity': 1, 'monotone_constraints': mon_constraints}
         num_boost_round = 10
         model = xgb.train(params, dtrain, num_boost_round)
 
